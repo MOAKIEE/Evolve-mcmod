@@ -4,6 +4,18 @@ allprojects {
     repositories { mavenCentral() }
 }
 
+tasks.register('verifyGeneratedResources', Exec) {
+    group = 'verification'
+    description = 'Checks committed data and translations against upstream source; requires Node.js only for maintenance.'
+    commandLine 'node', 'tools/export-upstream.cjs', '--check'
+}
+
+tasks.register('verifyUpstreamFixtures', Exec) {
+    group = 'verification'
+    description = 'Checks reference fixtures against original evolution functions; requires Node.js only for maintenance.'
+    commandLine 'node', 'tools/reference-fixtures.cjs', '--check'
+}
+
 subprojects {
     apply plugin: 'java-library'
     java {

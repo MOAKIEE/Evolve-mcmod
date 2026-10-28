@@ -141,7 +141,7 @@
   "evolve.evo_challenge_craft": "No Manual Crafting",
   "evolve.evo_challenge_craft_effect": "No manual resource crafting.",
   "evolve.evo_challenge_crispr": "Junk Gene",
-  "evolve.evo_challenge_crispr_effect": "Gain a random negative mutation. CRISPR cost creep discounts function at only 20%.",
+  "evolve.evo_challenge_crispr_effect": "Gain a random negative mutation. CRISPR cost creep discounts function at only 20%%.",
   "evolve.evo_challenge_nerfed": "Weak Genes",
   "evolve.evo_challenge_nerfed_effect": "Mastery is reduced to %1$s, and plasmid and anti-plasmid production are reduced to %2$s value. Plasmid and anti-plasmid storage bonus reduced to %3$s. Phage storage bonus reduced to %4$s.",
   "evolve.evo_challenge_badgenes": "Bad Genes",
@@ -1009,7 +1009,7 @@
   "evolve.ui_save": "Save",
   "evolve.ui_load": "Load",
   "evolve.ui_new": "New game",
-  "evolve.ui_progress": "Evolution: %1$s%",
+  "evolve.ui_progress": "Evolution: %1$s%%",
   "evolve.ui_ready": "Evolution complete: %1$s (%2$s). Civilization rules await migration.",
   "evolve.ui_saved": "Game saved.",
   "evolve.ui_loaded": "Game loaded.",
@@ -1027,5 +1027,9 @@
   "evolve.ui_capacity": "Capacity",
   "evolve.ui_count": "Owned: %1$s",
   "evolve.ui_description": "Description",
-  "evolve.ui_effect": "Effect"
+  "evolve.ui_effect": "Effect",
+  "evolve.ui_subtitle": "From primordial life to a civilization",
+  "evolve.ui_close": "Save before closing?",
+  "evolve.ui_save_missing": "No saved game was found.",
+  "evolve.ui_language": "Language"
 }

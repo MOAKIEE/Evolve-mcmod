@@ -141,7 +141,7 @@ const result = {
 const target = path.join(root, 'java/core/src/test/resources/upstream-evolution.json');
 const output = JSON.stringify(result, null, 2) + '\n';
 if (process.argv.includes('--check')) {
-    if (fs.readFileSync(target, 'utf8') !== output) throw new Error('Upstream fixtures changed; regenerate and review the differences.');
+    if (fs.readFileSync(target, 'utf8').replace(/\r\n/g, '\n') !== output) throw new Error('Upstream fixtures changed; regenerate and review the differences.');
 } else {
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, output);

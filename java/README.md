@@ -24,6 +24,12 @@
 .\gradlew.bat :desktop:smokeTest
 ```
 
+GUI 存档默认为当前工作目录下的 `evolve.save.json`。可使用参数指定位置或默认语言：
+
+```powershell
+.\gradlew.bat :desktop:run --args="--english --save=my-game.save.json"
+```
+
 首次使用 wrapper 需要下载固定的 Gradle 发行版；测试和 JSON 适配器依赖从 Maven Central 解析。运行 core 不需要 Node.js、浏览器或脚本引擎。
 
 资源提取脚本只在维护时运行，生成结果已纳入版本控制：

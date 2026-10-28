@@ -3,10 +3,15 @@ const fs = require('node:fs');
 const path = require('node:path');
 const cp = require('node:child_process');
 const root = path.resolve(__dirname, '../..');
-const resourceRoot = path.join(root, 'java/core/src/main/resources');
+const checking = process.argv.includes('--check');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8');
 const write = (name, value) => {
     const target = path.join(root, name);
+    if (checking) {
+        if (!fs.existsSync(target) || fs.readFileSync(target, 'utf8').replace(/\r\n/g, '\n') !== value)
+            throw new Error(`Generated resource differs: ${name}`);
+        return;
+    }
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, value, 'utf8');
 };
@@ -70,6 +75,8 @@ const extras = {
         ui_confirm_load: 'Load the saved game and replace current progress?', ui_confirm_title: 'Confirm',
         ui_time: 'Elapsed: %0 s', ui_status: 'Ready', ui_cost: 'Cost', ui_capacity: 'Capacity',
         ui_count: 'Owned: %0', ui_description: 'Description', ui_effect: 'Effect',
+        ui_subtitle: 'From primordial life to a civilization', ui_close: 'Save before closing?',
+        ui_save_missing: 'No saved game was found.', ui_language: 'Language',
     },
     zh_cn: {
         ui_title: '进化', ui_resources: '资源', ui_actions: '演化', ui_pause: '暂停',
@@ -81,6 +88,8 @@ const extras = {
         ui_confirm_load: '读取存档并替换当前进度？', ui_confirm_title: '确认',
         ui_time: '已运行：%0 秒', ui_status: '就绪', ui_cost: '消耗', ui_capacity: '容量',
         ui_count: '数量：%0', ui_description: '说明', ui_effect: '效果',
+        ui_subtitle: '从原始生命走向文明', ui_close: '关闭前保存游戏？',
+        ui_save_missing: '尚未找到存档。', ui_language: '语言',
     },
 };
 const defaults = JSON.parse(read('strings/strings.json'));
@@ -93,7 +102,7 @@ for (const [locale, file] of [['en_us', null], ['zh_cn', 'strings/strings.zh-CN.
     for (const [key, value] of Object.entries(extras[locale])) selected[`evolve.${key}`] = value;
     // Minecraft uses 1-based indexed format placeholders; the upstream uses %0, %1, ... .
     const minecraft = Object.fromEntries(Object.entries(selected).map(([k, v]) =>
-        [k, v.replace(/%([0-9]+)/g, (_, n) => `%${Number(n) + 1}$s`)]));
+        [k, v.replace(/%([0-9]+)|%/g, (_, n) => n === undefined ? '%%' : `%${Number(n) + 1}$s`)]));
     const escape = value => value.replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/\r/g, '\\r')
         .replace(/\t/g, '\\t');
     write(`java/core/src/main/resources/evolve/lang/${locale}.properties`,
