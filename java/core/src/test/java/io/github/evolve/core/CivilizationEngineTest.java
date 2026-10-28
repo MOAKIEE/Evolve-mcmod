@@ -41,7 +41,7 @@ class CivilizationEngineTest {
     static void act(EvolutionEngine game, String id, int times) { assertEquals(Status.OK, game.execute(new GameCommand.Action(id, times)).status(), id); }
 
     static void waitFor(EvolutionEngine game, String id, double amount) {
-        for (int ticks = 0; ticks <= 6000; ticks += 5) {
+        for (int ticks = 0; ticks <= 60000; ticks += 5) {
             if (game.exportSave().resources().get(id).amount() >= amount) return;
             game.advanceTicks(5);
         }

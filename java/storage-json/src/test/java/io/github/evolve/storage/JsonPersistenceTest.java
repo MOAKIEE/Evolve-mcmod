@@ -115,7 +115,7 @@ class JsonPersistenceTest {
         invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("quarry_worker", 0.5));
         invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("farmer", 4_294_967_296L));
         invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").remove("farmer"));
-        invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("banker", 0));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("scientist", 0));
         invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("capacitiesInitialized", true));
         invalidCivilization(root -> root.getAsJsonObject("context").addProperty("universe", "evil"));
         invalidCivilization(root -> root.getAsJsonObject("resources").remove("Food"));
@@ -190,13 +190,55 @@ class JsonPersistenceTest {
         resources.put("Knowledge", new GameSave.ResourceState(0, 600, true, 0));
         resources.put("Money", new GameSave.ResourceState(0, 1000, true, 0));
         resources.put("human", new GameSave.ResourceState(2, 2, true, 0));
-        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "professor", 0);
-        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "professor", 1);
+        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "professor", 0, "banker", 0);
+        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "professor", 1, "banker", 0);
         return new GameSave(save.schemaVersion(), save.ruleset(), 0, 0, 0, 0, false, save.phase(), save.randomSeed(),
                 save.species(), save.genus(), save.progress(), save.context(), resources,
                 Map.of("basic_housing", 2, "shed", 1, "university", 1),
                 Map.of("primitive", 3, "housing", 1, "currency", 1, "storage", 1, "science", 1), save.traits(),
                 new CivilizationState("humanoid", 2, workers, assigned, false));
+    }
+
+    @Test
+    void bankingRoundTripRestoresVacantPositionsAndRejectsForgedJobsOrStorage() {
+        var base = scienceSave();
+        var resources = new LinkedHashMap<>(base.resources());
+        resources.put("Lumber", new GameSave.ResourceState(0, 800, true, 0));
+        resources.put("Stone", new GameSave.ResourceState(0, 800, true, 0));
+        resources.put("Knowledge", new GameSave.ResourceState(0, 1100, true, 0));
+        resources.put("Money", new GameSave.ResourceState(0, 2800, true, 0));
+        var assigned = new LinkedHashMap<>(base.civilization().assigned());
+        assigned.put("banker", 1);
+        var tech = new LinkedHashMap<>(base.technologies());
+        tech.put("banking", 2);
+        var save = new GameSave(base.schemaVersion(), base.ruleset(), 0, 0, 0, 0, false, base.phase(), base.randomSeed(),
+                base.species(), base.genus(), base.progress(), base.context(), resources,
+                Map.of("basic_housing", 2, "shed", 2, "university", 2, "bank", 1), tech, base.traits(),
+                new CivilizationState("humanoid", 2, base.civilization().workers(), assigned, false));
+        var original = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        original.advanceTicks(23);
+        restored.advanceTicks(23);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(1, restored.exportSave().civilization().workers().get("banker"));
+        assertEquals(0.88, restored.exportSave().resources().get("Money").changePerSecond(), 1e-9);
+        assertEquals(2800, restored.exportSave().resources().get("Money").capacity());
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 4),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/science-1"),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Money").addProperty("capacity", 1000),
+                root -> root.getAsJsonObject("structures").remove("bank"),
+                root -> root.getAsJsonObject("technologies").remove("banking"),
+                root -> root.getAsJsonObject("technologies").addProperty("banking", 1),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").remove("banker"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("banker", 2),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("banker", 0.5),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("banker", 2)
+        )) {
+            var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
     }
 
     private static EvolutionEngine primitive() {

@@ -219,10 +219,49 @@ public final class EvolveDesktop {
             throw new IllegalStateException("Professor button used old session");
         panel.jobButton("professor", true).doClick();
         render(panel, Path.of("build/preview-science.png"), 900);
+        bankingSettlementSmokeTest(panel);
+    }
+
+    private static void bankingSettlementSmokeTest(EvolvePanel panel) throws Exception {
+        buyWhenReady(panel, "tech-banking");
+        buyWhenReady(panel, "city-bank");
+        if (panel.engine().exportSave().resources().get("Money").capacity() != 2800)
+            throw new IllegalStateException("Bank storage failed");
+        if (panel.engine().snapshot().jobs().stream().anyMatch(job -> job.id().equals("banker")))
+            throw new IllegalStateException("Bankers must require investing");
+        buyWhenReady(panel, "city-shed");
+        buyWhenReady(panel, "city-university");
+        buyWhenReady(panel, "tech-investing");
+        buyWhenReady(panel, "city-basic_housing");
+        waitFor(panel, "human", 7);
+        panel.jobButton("banker", true).doClick();
+        if (panel.jobButton("banker", true).isEnabled() || !panel.jobButton("banker", false).isEnabled())
+            throw new IllegalStateException("Banker capacity controls failed");
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        if (Math.abs(panel.engine().exportSave().resources().get("Money").changePerSecond() - 3.08) > 1e-9)
+            throw new IllegalStateException("Banker income failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Banking save failed");
+        var saved = panel.engine().exportSave();
+        panel.jobButton("banker", false).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Banking load failed");
+        panel.jobButton("banker", false).doClick();
+        if (panel.engine().exportSave().civilization().workers().get("banker") != 0)
+            throw new IllegalStateException("Banker button used old session");
+        panel.jobButton("banker", true).doClick();
+        render(panel, Path.of("build/preview-banking.png"), 960);
+    }
+
+    private static void buyWhenReady(EvolvePanel panel, String id) {
+        var action = panel.engine().snapshot().actions().stream().filter(a -> a.id().equals(id)).findFirst().orElseThrow();
+        if (!action.fitsStorage()) throw new IllegalStateException("Insufficient GUI storage for " + id);
+        action.costs().forEach((resource, amount) -> waitFor(panel, resource, amount));
+        panel.actionButton(id).doClick();
     }
 
     private static void waitFor(EvolvePanel panel, String id, double amount) {
-        for (int ticks = 0; ticks <= 6000; ticks += 5) {
+        for (int ticks = 0; ticks <= 60000; ticks += 5) {
             if (panel.engine().exportSave().resources().get(id).amount() >= amount) { panel.refresh(); return; }
             panel.engine().advanceTicks(5);
         }

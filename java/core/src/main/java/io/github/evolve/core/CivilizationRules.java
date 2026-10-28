@@ -17,9 +17,9 @@ final class CivilizationRules {
                 Function<EvolutionState, List<TextRef>> tooltip, String structure, String gathers) {}
 
     static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "human");
-    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university");
-    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "professor");
-    static final Map<String, Integer> TECH_MAX = Map.of("primitive", 3, "housing", 1, "agriculture", 2, "currency", 1, "axe", 1, "mining", 1, "storage", 1, "science", 1);
+    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank");
+    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "professor", "banker");
+    static final Map<String, Integer> TECH_MAX = Map.of("primitive", 3, "housing", 1, "agriculture", 2, "currency", 1, "axe", 1, "mining", 1, "storage", 1, "science", 1, "banking", 2);
     static final Map<String, Rule> ALL = build();
 
     private CivilizationRules() {}
@@ -61,12 +61,17 @@ final class CivilizationRules {
             case "lumberjack" -> state.tech("axe") >= 1;
             case "quarry_worker" -> state.count("rock_quarry") > 0;
             case "professor" -> state.count("university") > 0;
+            case "banker" -> state.tech("banking") >= 2;
             default -> false;
         };
     }
 
     static int jobCapacity(EvolutionState state, String job) {
-        return job.equals("professor") ? state.count("university") : -1;
+        return switch (job) {
+            case "professor" -> state.count("university");
+            case "banker" -> state.count("bank");
+            default -> -1;
+        };
     }
 
     static void updateCapacities(EvolutionState state) {
@@ -74,6 +79,7 @@ final class CivilizationRules {
         state.resources.get("Lumber").capacity = 200 + 100d * state.count("lumber_yard") + 300d * state.count("shed");
         state.resources.get("Stone").capacity = 200 + 100d * state.count("rock_quarry") + (state.tech("primitive") >= 2 ? 300d * state.count("shed") : 0);
         state.resources.get("Knowledge").capacity = 100 + 500d * state.count("university");
+        state.resources.get("Money").capacity = 1000 + 1800d * state.count("bank");
         var civ = state.civilization;
         state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), true);
     }
@@ -104,7 +110,9 @@ final class CivilizationRules {
         produce(state, "Lumber", workers.get("lumberjack") * (1 + state.count("lumber_yard") * 0.02) * hunger * multiplier);
         produce(state, "Stone", workers.get("quarry_worker") * (1 + state.count("rock_quarry") * 0.02) * hunger * multiplier);
         // The original income block runs after population changes and rounds each fastLoop deposit.
-        double income = state.tech("currency") > 0 ? (population.amount - unemployed) * 0.4 * hunger * multiplier : 0;
+        double income = state.tech("currency") > 0 ? (population.amount - unemployed) * 0.4 : 0;
+        if (fed && state.tech("banking") >= 2) income *= 1 + workers.get("banker") * 0.1;
+        income *= hunger * multiplier;
         var money = state.resources.get("Money");
         // Match Number.toFixed(2) on the exact binary double, including negative deposits.
         double deposit = new BigDecimal(income * 0.25).setScale(2, RoundingMode.HALF_UP).doubleValue();
@@ -169,6 +177,8 @@ final class CivilizationRules {
         research(rules, "mining", 3, "mining", 1, Map.of("Knowledge", 45d), s -> s.structures.put("rock_quarry", 0));
         research(rules, "storage", Map.of("primitive", 3, "currency", 1), "storage", 1, Map.of("Knowledge", 20d), s -> s.structures.put("shed", 0));
         research(rules, "science", Map.of("housing", 1), "science", 1, Map.of("Knowledge", 65d), s -> s.structures.put("university", 0));
+        research(rules, "banking", Map.of("currency", 1), "banking", 1, Map.of("Knowledge", 90d), s -> s.structures.put("bank", 0));
+        research(rules, "investing", Map.of("banking", 1), "banking", 2, Map.of("Money", 2500d, "Knowledge", 900d), s -> {});
         building(rules, "farm", "agriculture", "city_farm", 3, 50, 1.32, 20, 1.36, 10, 1.36, s -> {});
         building(rules, "lumber_yard", "axe", "city_lumber_yard", 5, 5, 1.85, 6, 1.9, 2, 1.95,
                 s -> s.resources.get("Lumber").capacity += 100);
@@ -189,6 +199,13 @@ final class CivilizationRules {
                         "Stone", scaled(750, 1.36, s.count("university")) - 350),
                 s -> { s.addStructure("university"); s.resources.get("Knowledge").capacity += 500; },
                 s -> List.of(TextRef.of("city_university_effect", 1), TextRef.of("city_max_knowledge", 500)), "university", null));
+        rules.put("city-bank", new Rule("city-bank", "commercial", "city_bank",
+                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("banking") > 0,
+                s -> Map.of("Money", scaled(250, 1.35, s.count("bank")), "Lumber", scaled(75, 1.32, s.count("bank")),
+                        "Stone", scaled(100, 1.35, s.count("bank"))),
+                s -> { s.addStructure("bank"); s.resources.get("Money").capacity += 1800; },
+                s -> s.tech("banking") >= 2 ? List.of(TextRef.of("ui_bank_capacity", 1800), TextRef.of("ui_banker_capacity", 1)) :
+                        List.of(TextRef.of("ui_bank_capacity", 1800)), "bank", null));
         rules.put("city-basic_housing", new Rule("city-basic_housing", "residential", "city_basic_housing_title",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("housing") == 1,
                 s -> {

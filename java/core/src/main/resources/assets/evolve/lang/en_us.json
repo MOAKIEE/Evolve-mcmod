@@ -2,6 +2,7 @@
   "evolve.job_farmer": "Farmer",
   "evolve.job_lumberjack": "Lumberjack",
   "evolve.job_quarry_worker": "Quarry Worker",
+  "evolve.job_banker": "Banker",
   "evolve.job_professor": "Professor",
   "evolve.job_unemployed": "Unemployed",
   "evolve.evo_rna": "Creates %1$s RNA",
@@ -259,6 +260,7 @@
   "evolve.city_farm": "Farm",
   "evolve.city_farm_desc": "Produces food",
   "evolve.city_shed_title1": "Shed",
+  "evolve.city_bank": "Bank",
   "evolve.city_lumber_yard": "Lumber Yard",
   "evolve.city_rock_quarry": "Rock Quarry",
   "evolve.city_rock_quarry_desc": "Allows workers to quarry for stone",
@@ -283,6 +285,10 @@
   "evolve.tech_storage_desc": "Design a structure to house resources",
   "evolve.tech_currency": "Currency",
   "evolve.tech_currency_desc": "Invent the concept of currency",
+  "evolve.tech_banking": "Banking",
+  "evolve.tech_banking_desc": "Invent Banking",
+  "evolve.tech_investing": "Investing",
+  "evolve.tech_investing_desc": "Invent Investing",
   "evolve.tech_science": "Scientific Method",
   "evolve.tech_science_desc": "Begin a journey of testing and discovery",
   "evolve.tech_stone_axe": "Primitive Axes",
@@ -1094,5 +1100,7 @@
   "evolve.ui_assign_worker": "Assign a worker",
   "evolve.ui_release_worker": "Release a worker",
   "evolve.ui_job_workers_limited": "%1$s: %2$s / %3$s",
-  "evolve.ui_shed_effect": "Increases lumber and stone storage capacity by %1$s each."
+  "evolve.ui_shed_effect": "Increases lumber and stone storage capacity by %1$s each.",
+  "evolve.ui_bank_capacity": "Increases money capacity by %1$s.",
+  "evolve.ui_banker_capacity": "Adds %1$s banker position."
 }

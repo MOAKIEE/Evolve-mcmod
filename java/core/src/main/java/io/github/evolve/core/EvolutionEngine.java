@@ -373,23 +373,25 @@ public final class EvolutionEngine implements GameEngine {
         int houses = save.structures().getOrDefault("basic_housing", 0);
         if (housing && primitive != 3 || save.structures().containsKey("basic_housing") != housing)
             throw new IllegalArgumentException("Inconsistent primitive structures");
-        for (var dependency : Map.of("farm", "agriculture", "lumber_yard", "axe", "rock_quarry", "mining", "shed", "storage", "university", "science").entrySet()) {
+        for (var dependency : Map.of("farm", "agriculture", "lumber_yard", "axe", "rock_quarry", "mining", "shed", "storage", "university", "science", "bank", "banking").entrySet()) {
             if (save.structures().containsKey(dependency.getKey()) != save.technologies().containsKey(dependency.getValue()) ||
                     save.technologies().containsKey(dependency.getValue()) && primitive != 3)
                 throw new IllegalArgumentException("Inconsistent production structure");
         }
         boolean currency = save.technologies().containsKey("currency");
         if (currency && !housing || houses > 5 && !currency) throw new IllegalArgumentException("Missing currency prerequisite");
-        if (save.technologies().containsKey("storage") && !currency || save.technologies().containsKey("science") && !housing)
-            throw new IllegalArgumentException("Missing storage or science prerequisite");
+        if (save.technologies().containsKey("storage") && !currency || save.technologies().containsKey("science") && !housing ||
+                save.technologies().containsKey("banking") && !currency)
+            throw new IllegalArgumentException("Missing storage, science or banking prerequisite");
         int sheds = save.structures().getOrDefault("shed", 0);
         int universities = save.structures().getOrDefault("university", 0);
+        int banks = save.structures().getOrDefault("bank", 0);
         if (universities > 0 && !currency) throw new IllegalArgumentException("Missing university currency prerequisite");
         checkResource(save, "Food", save.civilization().capacitiesInitialized() ? 1000 : 250, primitive >= 1);
         checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0) + 300d * sheds, true);
         checkResource(save, "Stone", 200 + 100d * save.structures().getOrDefault("rock_quarry", 0) + 300d * sheds, primitive >= 2);
         checkResource(save, "Knowledge", 100 + 500d * universities, primitive >= 3);
-        checkResource(save, "Money", 1000, currency);
+        checkResource(save, "Money", 1000 + 1800d * banks, currency);
         checkResource(save, "human", houses, houses > 0);
         var population = save.resources().get("human");
         if (!save.civilization().workers().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)) ||
@@ -403,12 +405,17 @@ public final class EvolutionEngine implements GameEngine {
                 case "lumberjack" -> save.technologies().containsKey("axe");
                 case "quarry_worker" -> save.structures().getOrDefault("rock_quarry", 0) > 0;
                 case "professor" -> universities > 0;
+                case "banker" -> save.technologies().getOrDefault("banking", 0) >= 2;
                 default -> false;
             };
             if (job.getValue() < 0 || job.getValue() > 1_000_000 || !visible && job.getValue() != 0)
                 throw new IllegalArgumentException("Invalid worker assignment");
             int target = save.civilization().assigned().get(job.getKey());
-            int capacity = job.getKey().equals("professor") ? universities : 1_000_000;
+            int capacity = switch (job.getKey()) {
+                case "professor" -> universities;
+                case "banker" -> banks;
+                default -> 1_000_000;
+            };
             if (target < job.getValue() || target > capacity || target < 0 || !visible && target != 0 || job.getValue() > capacity)
                 throw new IllegalArgumentException("Invalid job target or capacity");
             totalWorkers += job.getValue();
