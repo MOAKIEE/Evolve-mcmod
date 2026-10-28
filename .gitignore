@@ -7,3 +7,10 @@ node_modules/*
 docs
 dist
 *.map
+
+# Standalone Java adaptation
+java/**/build/
+java/**/.gradle/
+java/**/out/
+java/*.save.json
+java/*.save.json.bak

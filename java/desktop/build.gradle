@@ -1,0 +1,11 @@
+apply plugin: 'application'
+description = 'Standalone GUI for exercising the same contracts as a future Minecraft Screen'
+dependencies { implementation project(':storage-json') }
+application { mainClass = 'io.github.evolve.desktop.EvolveDesktop' }
+tasks.register('smokeTest', JavaExec) {
+    group = 'verification'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = application.mainClass
+    args '--smoke-test'
+    systemProperty 'java.awt.headless', 'true'
+}

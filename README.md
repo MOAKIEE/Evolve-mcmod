@@ -1,5 +1,9 @@
 # Evolve
 
+## Minecraft Java adaptation
+
+The standalone Java 21 adaptation lives in [java/](java/README.md). It separates native game rules, GUI snapshots/commands, and save adapters for a future Minecraft GUI. See [migration status](java/MIGRATION.md) for implemented scope and remaining systems.
+
 ## Play
 
 https://pmotschmann.github.io/Evolve/

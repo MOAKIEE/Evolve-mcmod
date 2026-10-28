@@ -1,0 +1,14 @@
+Evolve Java adaptation
+
+Based on Evolve Idle by Peter Motschmann and contributors.
+Upstream: https://github.com/pmotschmann/Evolve
+Source reference: repository revision 3436358d (package version 1.4.10).
+
+Java gameplay rules, extracted species/genus data, and localized text are
+adapted from the original source and remain under Mozilla Public License 2.0.
+The full license is included in META-INF/LICENSE and in the repository root.
+Preserve these notices when moving this code into another project.
+
+Gson, used only by storage-json, is licensed under Apache License 2.0.
+JUnit is used only for development and is not part of the runtime core.
+The desktop preview uses the JDK's Swing toolkit and is not a mod dependency.

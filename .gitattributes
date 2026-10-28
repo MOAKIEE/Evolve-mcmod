@@ -1,3 +1,5 @@
 evolve/* -diff
 evolve/evolve.js diff
 wiki/* -diff
+java/gradlew text eol=lf
+java/gradlew.bat text eol=crlf

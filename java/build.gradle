@@ -1,0 +1,29 @@
+allprojects {
+    group = 'io.github.evolve'
+    version = '0.1.0'
+    repositories { mavenCentral() }
+}
+
+subprojects {
+    apply plugin: 'java-library'
+    java {
+        toolchain.languageVersion = JavaLanguageVersion.of(21)
+        withSourcesJar()
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+        options.release = 21
+    }
+    dependencies {
+        testImplementation platform('org.junit:junit-bom:5.10.2')
+        testImplementation 'org.junit.jupiter:junit-jupiter'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    }
+    tasks.withType(Test).configureEach { useJUnitPlatform() }
+    tasks.withType(Jar).configureEach {
+        from(rootProject.file('../LICENSE')) { into 'META-INF' }
+        from(rootProject.file('NOTICE')) { into 'META-INF' }
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
+    }
+}
