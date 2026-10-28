@@ -19,5 +19,5 @@ public record GameSave(int schemaVersion, String ruleset, long elapsedTicks, lon
         traits = GameSnapshot.ordered(traits);
     }
 
-    public record ResourceState(double amount, double capacity, boolean visible) {}
+    public record ResourceState(double amount, double capacity, boolean visible, double changePerSecond) {}
 }

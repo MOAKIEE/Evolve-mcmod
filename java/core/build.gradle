@@ -1,1 +1,2 @@
 description = 'Headless Java 21 game rules and GUI/save contracts; no runtime dependencies'
+dependencies { testImplementation 'com.google.code.gson:gson:2.10.1' }
