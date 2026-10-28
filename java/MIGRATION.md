@@ -31,6 +31,44 @@
 
 `UPSTREAM_INVENTORY.json` 记录原始模块、源码行数、浏览器引用和静态 action ID。它是清单，不是玩法覆盖率报告。
 
+## 后续 Minecraft GUI 接入方式
+
+| 位置 | 负责事项 |
+| --- | --- |
+| 服务端会话管理 | 决定按玩家、团队或方块保存一局；维护实例生命周期和访问权限 |
+| 服务端 tick | 在实例所属线程调用 `advanceTicks(1)`；不能在 GUI 渲染时推进 |
+| C2S 操作消息 | 仅传稳定 action ID 与重复次数，服务端重新检查权限、解锁和费用 |
+| S2C 数据消息 | 编码 `GameSnapshot`，客户端据此绘制资源、按钮、费用、进度和提示 |
+| Minecraft Screen/Menu | 处理滚动、布局、焦点和按钮，使用快照中的 `enabled()` 控制展示；展示状态不能代替服务端检查 |
+| SavedData/NBT | 保存 `GameSave`；加载时先验证，再在服务器线程建立实例 |
+
+当前工程提供核心与数据契约，尚未实现这些 MC 注册、数据包、NBT 编码器或 Screen。权限必须由宿主确定，不能用客户端传来的 UUID、会话 ID 或文件路径直接授权。多人 GUI 的命令应路由到服务端拥有的正确实例，不能使用全局静态单例。
+
+最小核心调用示例：
+
+```java
+GameEngine game = EvolutionEngine.newGame(2);
+game.advanceTicks(1);
+CommandResult result = game.execute(new GameCommand.Action("evolution-rna"));
+GameSnapshot snapshot = game.snapshot();
+GameSave save = game.exportSave();
+GameEngine restored = EvolutionEngine.restore(save);
+```
+
+`GameCommand.Action` 的次数范围为 1–100。批量操作逐次重新计算费用和条件；`CommandResult.applied()` 表示实际完成次数，`status()` 表示全部完成或停止原因。单次失败不会扣除部分费用。发送资源量、费用或科技等级都不属于此接口。
+
+`TextRef` 在 MC 客户端可映射为 `Component.translatable(text.key(), text.arguments().toArray())`。把 `core/src/main/resources/assets/evolve/lang` 复制到宿主资源包的对应位置；不要假设一个普通依赖 jar 会自动成为 Minecraft 资源包。提取器将原作 `%0` 形式转换为 Minecraft `%1$s`，并转义字面百分号。
+
+磁盘保存可以先在服务器线程导出不可变 `GameSave`，再交给同一会话的串行 IO 队列处理；不要在后台线程调用 `snapshot()` 或 `exportSave()`。JSON 解码可以在 IO 线程进行，`EvolutionEngine.restore()` 则必须在未来推进该实例的线程执行。
+
+`core` jar 可独立使用；NBT 路线不需要 Gson。JSON 路线额外使用 storage-json 和兼容的 Gson。desktop、Node.js 工具和 JUnit 测试不随 mod 打包。
+
+## 当前停止点与下一批顺序
+
+本批在原生演化核心、GUI/存档契约、文件适配器与独立 GUI 预览完成后停止，未修改目标 mod。
+
+下一批从 `CIVILIZATION_READY` 的文明初始化开始：核对 `sentience()` 副作用与种族特性，再迁移人口、工作、基础资源、原始科技和城市建筑；之后扩展工业/政体/军事、太空各层级，以及声望与重置。每个系统补原版场景对照并单独提交。新增持久化数据时显式升级 schema/ruleset 并提供迁移器，不能默默改变现有存档含义。
+
 ## 开发记录
 
 ### 2026-10-28：构建与基础契约
@@ -73,3 +111,20 @@ node tools/reference-fixtures.cjs --check
 这个窗口用于在移植前验证 GUI 所需的数据和交互，不是 Minecraft 的 Screen，也不作为 mod 依赖。后续重写绘制与网络适配层时保留核心接口。GUI 预览中的 Swing Timer 每次推进一个逻辑 tick；窗口卡顿不会触发无限补算。
 
 `smokeTest` 在不打开窗口的情况下点击真实按钮、完成部分细胞建设、保存/读取并渲染界面到 `desktop/build/preview.png`。该图片是本地构建产物，不纳入源码提交。另验证读档后按钮指向正确会话，以及坏档不会替换当前进度。
+
+## 本批提交与最终验证
+
+| 提交 | 内容 |
+| --- | --- |
+| `722959d3` | Java 构建、GUI/存档契约与静态数据 |
+| `c92940f7` | 原生演化规则与原版对照测试 |
+| `44c2f40d` | JSON 格式、文件保存与备份 |
+| `f9dfc9b4` | 独立 GUI 预览、翻译与交互验证 |
+| 文档提交 | 接入说明、覆盖边界与验证记录 |
+
+验证环境：JDK 21、Gradle 8.14.3。`build`、`verifyGeneratedResources`、`verifyUpstreamFixtures` 与 GUI `smokeTest` 均通过。JUnit 共 434 项，零失败、零错误。core 的运行依赖通过 jdeps 检查；发布 jar 带原始许可证与署名。目标 mod 工作区没有变动。
+
+```powershell
+.\gradlew.bat build verifyGeneratedResources verifyUpstreamFixtures
+.\gradlew.bat :desktop:smokeTest
+```
