@@ -14,6 +14,10 @@
 
 `core` 不引用 Minecraft、NeoForge、AE2、Swing、DOM、JavaScript 引擎、计时器或文件系统。之后接入 mod 时，无需携带 desktop。
 
+当前支持原生演化，以及普通人类在 grassland / standard 下的原始文明起步：进入聚落、手动采集、木棒/骨制工具/日晷/住房研究、前五间基础住房、人口增长与饥饿、默认闲置工作。其他物种暂留在文明交接点；工作分配、农业、货币与后续系统仍待迁移。完整边界和下一批顺序见 [MIGRATION.md](MIGRATION.md)。
+
+当前 Java 存档为 schema 2 / `evolve-1.4.10/primitive-1`。项目处于开发阶段，不维护旧版存档兼容；版本不符会拒绝读取并保留当前游戏。
+
 ## 构建
 
 在本目录使用 JDK 21 执行：
@@ -23,6 +27,14 @@
 .\gradlew.bat :desktop:run
 .\gradlew.bat :desktop:smokeTest
 ```
+
+原版规则对照与生成资源校验：
+
+```powershell
+.\gradlew.bat verifyGeneratedResources verifyUpstreamFixtures verifyCivilizationFixtures
+```
+
+`smokeTest` 不打开窗口，分别渲染演化与文明界面到 `desktop/build/preview.png` 和 `desktop/build/preview-civilization.png`，并验证真实按钮、保存/读取与读档后的操作。
 
 GUI 存档默认为当前工作目录下的 `evolve.save.json`。可使用参数指定位置或默认语言：
 

@@ -2,6 +2,10 @@ package io.github.evolve.desktop;
 
 import io.github.evolve.core.EvolutionEngine;
 import io.github.evolve.core.GameCommand;
+import io.github.evolve.core.GameSave;
+import io.github.evolve.core.GameSnapshot;
+import io.github.evolve.core.CivilizationState;
+import io.github.evolve.core.SpeciesCatalog;
 import io.github.evolve.storage.AtomicFileSaveStore;
 import io.github.evolve.storage.JsonSaveCodec;
 
@@ -17,6 +21,8 @@ import java.awt.image.BufferedImage;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 public final class EvolveDesktop {
     private EvolveDesktop() {}
@@ -81,23 +87,70 @@ public final class EvolveDesktop {
                     panel.act("evolution-rna", 10);
                     panel.loadGame();
                     if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("GUI load failed");
-                    panel.setSize(1120, 760);
-                    layoutTree(panel);
-                    var image = new BufferedImage(1120, 760, BufferedImage.TYPE_INT_RGB);
-                    var graphics = image.createGraphics();
-                    panel.printAll(graphics);
-                    graphics.dispose();
-                    var output = Path.of("build/preview.png");
-                    Files.createDirectories(output.getParent());
-                    ImageIO.write(image, "png", output.toFile());
-                    System.out.println("GUI smoke test passed; rendered " + output.toAbsolutePath());
+                    render(panel, Path.of("build/preview.png"), 760);
+                    civilizationSmokeTest(directory);
                 } catch (Exception e) { throw new IllegalStateException("GUI smoke test failed", e); }
             });
         } finally {
             Files.deleteIfExists(directory.resolve("game.json.bak"));
             Files.deleteIfExists(directory.resolve("game.json"));
+            Files.deleteIfExists(directory.resolve("civilization.json.bak"));
+            Files.deleteIfExists(directory.resolve("civilization.json"));
             Files.deleteIfExists(directory);
         }
+    }
+
+    /** Valid handoff fixture; the core tests separately cover real evolution into this phase. */
+    static GameSave civilizationHandoffForSmoke() {
+        var fresh = EvolutionEngine.newGame(2).exportSave();
+        var resources = new LinkedHashMap<String, GameSave.ResourceState>();
+        fresh.resources().forEach((id, r) -> resources.put(id, new GameSave.ResourceState(r.amount(), r.capacity(), false, 0)));
+        return new GameSave(GameSave.SCHEMA_VERSION, GameSave.RULESET, 0, 0, 0, 0, false,
+                GameSnapshot.Phase.CIVILIZATION_READY, 2, "human", "humanoid", 100, fresh.context(), resources,
+                Map.of(), Map.of(), SpeciesCatalog.startingTraits("human"), new CivilizationState("humanoid", 0));
+    }
+
+    private static void civilizationSmokeTest(Path directory) throws Exception {
+        var panel = new EvolvePanel(EvolutionEngine.restore(civilizationHandoffForSmoke()),
+                new AtomicFileSaveStore(directory.resolve("civilization.json"), new JsonSaveCodec()), "zh_cn");
+        panel.actionButton("civilization-start").doClick();
+        panel.act("city-lumber", 5);
+        panel.actionButton("tech-club").doClick();
+        panel.act("city-food", 10);
+        panel.actionButton("tech-bone_tools").doClick();
+        panel.act("city-lumber", 100);
+        panel.act("city-stone", 10);
+        panel.actionButton("tech-sundial").doClick();
+        panel.engine().advanceTicks(203);
+        panel.refresh();
+        panel.actionButton("tech-housing").doClick();
+        panel.act("city-basic_housing", 5);
+        panel.act("city-food", 100);
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        if (panel.engine().snapshot().jobs().getFirst().workers() == 0) throw new IllegalStateException("Population growth failed");
+        if (panel.actionButton("city-basic_housing").isEnabled()) throw new IllegalStateException("Currency boundary not enforced");
+        if (!panel.saveGame()) throw new IllegalStateException("Civilization save failed");
+        var saved = panel.engine().exportSave();
+        panel.act("city-food", 5);
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Civilization load failed");
+        panel.actionButton("city-lumber").doClick();
+        if (panel.engine().exportSave().resources().get("Lumber").amount() != saved.resources().get("Lumber").amount() + 1)
+            throw new IllegalStateException("Civilization button used old session");
+        render(panel, Path.of("build/preview-civilization.png"), 900);
+    }
+
+    private static void render(EvolvePanel panel, Path output, int height) throws Exception {
+        panel.setSize(1120, height);
+        layoutTree(panel);
+        var image = new BufferedImage(1120, height, BufferedImage.TYPE_INT_RGB);
+        var graphics = image.createGraphics();
+        panel.printAll(graphics);
+        graphics.dispose();
+        Files.createDirectories(output.getParent());
+        ImageIO.write(image, "png", output.toFile());
+        System.out.println("GUI smoke test passed; rendered " + output.toAbsolutePath());
     }
 
     private static void layoutTree(Container component) {

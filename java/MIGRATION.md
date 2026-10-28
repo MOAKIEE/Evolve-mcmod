@@ -99,7 +99,26 @@ GameEngine restored = EvolutionEngine.restore(save);
 .\gradlew.bat :core:test :storage-json:test verifyUpstreamFixtures verifyCivilizationFixtures
 ```
 
-本批按系统单独提交；GUI 预览适配及其验证记录在下一次提交补充。
+核心与存档已提交为 `5a3bd118`（`feat(core): add bounded human primitive civilization rules`）。
+
+### GUI 预览
+
+预览根据快照动态建立资源卡片，人类人口优先显示；资源列表可滚动，解锁新资源或切换存档后重新绑定可见卡片。文明阶段显示聚落操作、人口容量和默认闲置工作，采集、研究及住房按钮仍只发送 `GameCommand.Action`。
+
+补齐中英文基础资源、研究、住房和工作文本；费用使用资源翻译名，零消耗按钮不再统一显示“＋ RNA”。缺少尚未解锁资源时提示先解锁资源，容量不足时提示扩容，避免把第六间住房的货币条件误报成容量不足。
+
+GUI 合约测试覆盖文明按钮、动态资源、读档后的实例绑定、坏档保留和全过程中英文 key 检查。`smokeTest` 同时验证演化界面及从有效人类交接 fixture 开始的聚落流程，点击真实研究按钮、建满五间住房、增长人口、保存/读取后继续操作，并生成：
+
+- `desktop/build/preview.png`：演化阶段。
+- `desktop/build/preview-civilization.png`：人类聚落、人口、资源与工作。
+
+两张图片均已渲染并目视检查，属于本地构建产物，不提交。真实演化进入人类文明的路径由核心测试覆盖；GUI fixture 不宣称复现整局浏览器游戏。GUI 仍为独立 Swing 预览，Minecraft Screen、NBT、网络消息和 mod 注册尚未接入。
+
+本批最终验证：JUnit 520 项，零失败、零错误；构建、生成资源、两套原版 fixture 校验和双阶段 GUI smoke test 通过。
+
+```powershell
+.\gradlew.bat build verifyGeneratedResources verifyUpstreamFixtures verifyCivilizationFixtures :desktop:smokeTest
+```
 
 ## 开发记录
 

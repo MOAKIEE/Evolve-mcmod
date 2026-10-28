@@ -54,14 +54,17 @@ public final class EvolvePanel extends JPanel {
     private final JLabel status = label(12, MUTED);
     private final JProgressBar progress = new JProgressBar(0, 100);
     private final JPanel actionGrid = panel(new GridLayout(0, 2, 10, 10));
+    private final JPanel resourceList = panel(null);
     private final Map<String, JButton> actionButtons = new LinkedHashMap<>();
     private final Map<String, ResourceCard> resourceCards = new LinkedHashMap<>();
     private final JTextArea handoff = new JTextArea();
+    private final JTextArea jobs = new JTextArea();
     private final JButton pause = button();
     private final JButton save = button();
     private final JButton load = button();
     private final JButton fresh = button();
     private List<String> previousActionIds = List.of();
+    private List<String> previousResourceIds;
     private long savedRevision = -1;
 
     public EvolvePanel(GameEngine engine, SaveStore store, String locale) {
@@ -94,25 +97,23 @@ public final class EvolvePanel extends JPanel {
         var left = panel(new BorderLayout(0, 16));
         left.setPreferredSize(new Dimension(260, 400));
         left.add(resourceTitle, BorderLayout.NORTH);
-        var resourceList = panel(null);
         resourceList.setLayout(new BoxLayout(resourceList, BoxLayout.Y_AXIS));
-        for (String id : List.of("RNA", "DNA")) {
-            var card = new ResourceCard();
-            resourceCards.put(id, card);
-            resourceList.add(card.panel);
-            resourceList.add(Box.createVerticalStrut(12));
+        for (var info : List.of(handoff, jobs)) {
+            info.setEditable(false);
+            info.setLineWrap(true);
+            info.setWrapStyleWord(true);
+            info.setFont(BODY);
+            info.setForeground(TEXT);
+            info.setBackground(BACKGROUND);
+            info.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+            info.setAlignmentX(Component.LEFT_ALIGNMENT);
+            info.setMaximumSize(new Dimension(400, 100));
         }
-        handoff.setEditable(false);
-        handoff.setLineWrap(true);
-        handoff.setWrapStyleWord(true);
-        handoff.setFont(BODY);
-        handoff.setForeground(TEXT);
-        handoff.setBackground(BACKGROUND);
-        handoff.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
-        handoff.setAlignmentX(Component.LEFT_ALIGNMENT);
-        resourceList.add(handoff);
-        resourceList.add(Box.createVerticalGlue());
-        left.add(resourceList, BorderLayout.CENTER);
+        var resourceScroll = new JScrollPane(resourceList, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        resourceScroll.setBorder(null);
+        resourceScroll.getViewport().setBackground(BACKGROUND);
+        resourceScroll.getVerticalScrollBar().setUnitIncrement(18);
+        left.add(resourceScroll, BorderLayout.CENTER);
         content.add(left, BorderLayout.WEST);
 
         var right = panel(new BorderLayout(0, 14));
@@ -201,19 +202,41 @@ public final class EvolvePanel extends JPanel {
         title.setText(localizer.text("ui_title"));
         subtitle.setText(localizer.text("ui_subtitle"));
         resourceTitle.setText(localizer.text("ui_resources"));
-        actionTitle.setText(localizer.text("ui_actions"));
+        actionTitle.setText(localizer.text(snapshot.phase() == GameSnapshot.Phase.EVOLUTION ? "ui_actions" : "ui_civilization_actions"));
         pause.setText(localizer.text(snapshot.paused() ? "ui_resume" : "ui_pause"));
         save.setText(localizer.text("ui_save"));
         load.setText(localizer.text("ui_load"));
         fresh.setText(localizer.text("ui_new"));
         elapsed.setText(localizer.text("ui_time", number(snapshot.elapsedTicks() / 20d)));
         progress.setValue(snapshot.progress());
-        progress.setString(localizer.text("ui_progress", snapshot.progress()));
-        for (var resource : snapshot.resources()) resourceCards.get(resource.id()).update(resource);
+        progress.setString(localizer.text(snapshot.phase() == GameSnapshot.Phase.PRIMITIVE ? "ui_primitive" : "ui_progress", snapshot.progress()));
+        var visibleResources = snapshot.resources().stream().filter(GameSnapshot.ResourceView::visible)
+                .sorted(java.util.Comparator.comparingInt(r -> r.id().equals(snapshot.species()) ? 0 : 1)).toList();
+        List<String> resourceIds = visibleResources.stream().map(GameSnapshot.ResourceView::id).toList();
+        if (!resourceIds.equals(previousResourceIds)) {
+            resourceList.removeAll();
+            resourceCards.clear();
+            for (String id : resourceIds) {
+                var card = new ResourceCard();
+                resourceCards.put(id, card);
+                resourceList.add(card.panel);
+                resourceList.add(Box.createVerticalStrut(12));
+            }
+            resourceList.add(handoff);
+            resourceList.add(jobs);
+            resourceList.add(Box.createVerticalGlue());
+            previousResourceIds = resourceIds;
+        }
+        for (var resource : visibleResources) resourceCards.get(resource.id()).update(resource);
         boolean complete = snapshot.phase() == GameSnapshot.Phase.CIVILIZATION_READY;
+        boolean canStart = snapshot.actions().stream().anyMatch(a -> a.id().equals("civilization-start"));
         handoff.setVisible(complete);
-        handoff.setText(complete ? localizer.text("ui_ready", localizer.text("race_" + snapshot.species()),
+        handoff.setText(complete ? localizer.text(canStart ? "ui_ready_supported" : "ui_ready", localizer.text("race_" + snapshot.species()),
                 localizer.text("genelab_genus_" + snapshot.genus())) : "");
+        jobs.setVisible(!snapshot.jobs().isEmpty());
+        jobs.setText(snapshot.jobs().isEmpty() ? "" : localizer.text("ui_jobs") + "\n" + snapshot.jobs().stream()
+                .map(job -> localizer.text("ui_job_workers", localizer.text(job.name()), job.workers()))
+                .collect(java.util.stream.Collectors.joining("\n")));
 
         List<String> ids = snapshot.actions().stream().map(GameSnapshot.ActionView::id).toList();
         if (!ids.equals(previousActionIds)) {
@@ -232,15 +255,16 @@ public final class EvolvePanel extends JPanel {
         }
         for (var action : snapshot.actions()) {
             var button = actionButtons.get(action.id());
-            String costs = action.costs().entrySet().stream().map(entry -> entry.getKey() + " " + number(entry.getValue()))
+            String costs = action.costs().entrySet().stream().map(entry -> localizer.text(snapshot.resources().stream()
+                    .filter(r -> r.id().equals(entry.getKey())).findFirst().orElseThrow().name()) + " " + number(entry.getValue()))
                     .collect(java.util.stream.Collectors.joining("  ·  "));
             String count = action.count() > 0 ? "  ×" + action.count() : "";
             button.setText("<html><div style='width:190px'><b>" + html(localizer.text(action.title()) + count) +
-                    "</b><br><span style='font-size:10px'>" + html(costs.isEmpty() ? "＋ RNA" : costs) + "</span></div></html>");
+                    "</b><br><span style='font-size:10px'>" + html(costs.isEmpty() ? localizer.text("ui_no_cost") : costs) + "</span></div></html>");
             button.setEnabled(action.enabled());
             String tooltip = action.tooltip().stream().map(localizer::text).map(EvolvePanel::html)
                     .collect(java.util.stream.Collectors.joining("<br><br>"));
-            if (!action.fitsStorage()) tooltip += "<br><br>" + html(localizer.text("ui_storage"));
+            if (!action.fitsStorage()) tooltip += "<br><br>" + html(localizer.text(lockedResource(snapshot, action) ? "ui_unlock_resource" : "ui_storage"));
             button.setToolTipText("<html><div style='width:300px'>" + tooltip + "</div></html>");
         }
         revalidate();
@@ -251,12 +275,17 @@ public final class EvolvePanel extends JPanel {
         var result = engine.execute(new GameCommand.Action(id, repetitions));
         if (result.status() != CommandResult.Status.OK) status.setText(localizer.text(switch (result.status()) {
             case PAUSED -> "ui_paused";
-            case STORAGE_TOO_SMALL -> "ui_storage";
+            case STORAGE_TOO_SMALL -> engine.snapshot().actions().stream().filter(a -> a.id().equals(id))
+                    .anyMatch(a -> lockedResource(engine.snapshot(), a)) ? "ui_unlock_resource" : "ui_storage";
             case RESOURCE_FULL -> "ui_full";
             default -> "ui_unaffordable";
         }));
         refresh();
         return result;
+    }
+
+    private static boolean lockedResource(GameSnapshot snapshot, GameSnapshot.ActionView action) {
+        return snapshot.resources().stream().anyMatch(resource -> !resource.visible() && action.costs().containsKey(resource.id()));
     }
 
     private final class ResourceCard {
