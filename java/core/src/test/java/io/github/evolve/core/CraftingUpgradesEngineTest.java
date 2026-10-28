@@ -8,8 +8,7 @@ import static io.github.evolve.core.CommandResult.Status;
 import static org.junit.jupiter.api.Assertions.*;
 
 class CraftingUpgradesEngineTest {
-    @Test
-    void realResearchAndRecipeAssignmentsUpdateManualAndAutomaticCrafting() {
+    static EvolutionEngine manufacturingSettlement() {
         var game = IronEngineTest.ironToolsSettlement();
         buyExpanded(game, "tech-foundry");
         for (int i = 0; i < 3; i++) buyExpanded(game, "city-foundry");
@@ -40,12 +39,17 @@ class CraftingUpgradesEngineTest {
             game.advanceTicks(20);
         }
         buyExpanded(game, "tech-carpentry");
+        return game;
+    }
+
+    @Test
+    void realResearchAndRecipeAssignmentsUpdateManualAndAutomaticCrafting() {
+        var game = manufacturingSettlement();
+        waitFor(game, "Lumber", 300);
         assertEquals(Status.OK, game.execute(new GameCommand.AssignJob("craft_Plywood", 3)).status());
-        waitFor(game, "Lumber", 110);
         double before = game.exportSave().resources().get("Plywood").amount();
         buyExpanded(game, "craft-Plywood");
         assertEquals(1.19, game.exportSave().resources().get("Plywood").amount() - before, 1e-10);
-        waitFor(game, "Lumber", 10);
         game.advanceTicks(5);
         assertEquals(1.19 * 3 / 140, game.exportSave().resources().get("Plywood").changePerSecond(), 1e-12);
         assertEquals(Status.OK, game.execute(new GameCommand.AssignJob("craft_Plywood", -1)).status());

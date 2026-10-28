@@ -64,6 +64,7 @@ public final class EvolvePanel extends JPanel {
     private final JPanel smelterControls = panel(new GridLayout(0, 1, 0, 6));
     private final JLabel smelterTitle = label(17, ACCENT);
     private final SmelterRow woodSmelter = new SmelterRow("Wood", "ui_smelter_wood");
+    private final SmelterRow coalSmelter = new SmelterRow("Coal", "ui_smelter_coal");
     private final SmelterRow ironSmelter = new SmelterRow("Iron", "ui_smelter_iron");
     private final JPanel garrisonControls = panel(new GridLayout(0, 1, 0, 6));
     private final JLabel garrisonTitle = label(17, ACCENT);
@@ -137,6 +138,7 @@ public final class EvolvePanel extends JPanel {
         bottomControls.add(jobs, BorderLayout.CENTER);
         smelterControls.add(smelterTitle);
         smelterControls.add(woodSmelter.panel);
+        smelterControls.add(coalSmelter.panel);
         smelterControls.add(ironSmelter.panel);
         var industryControls = panel(null);
         industryControls.setLayout(new BoxLayout(industryControls, BoxLayout.Y_AXIS));
@@ -194,7 +196,7 @@ public final class EvolvePanel extends JPanel {
     JButton actionButton(String id) { return actionButtons.get(id); }
     JButton jobButton(String id, boolean recruit) { return recruit ? jobRows.get(id).add : jobRows.get(id).remove; }
     JButton smelterButton(String id, boolean increase) {
-        var row = id.equals("Wood") ? woodSmelter : ironSmelter;
+        var row = switch (id) { case "Wood" -> woodSmelter; case "Coal" -> coalSmelter; case "Iron" -> ironSmelter; default -> throw new IllegalArgumentException("Unknown smelter allocation"); };
         return increase ? row.add : row.remove;
     }
     void tick() { engine.advanceTicks(1); refresh(); }
@@ -283,7 +285,9 @@ public final class EvolvePanel extends JPanel {
         smelterControls.setVisible(smelter.capacity() > 0);
         smelterTitle.setText(localizer.text("ui_smelter_title", smelter.capacity()));
         woodSmelter.update(smelter.wood(), smelter.capacity(), smelter.enabled());
-        ironSmelter.update(smelter.iron(), smelter.wood(), smelter.enabled());
+        coalSmelter.panel.setVisible(smelter.coalUnlocked());
+        coalSmelter.update(smelter.coal(), smelter.capacity(), smelter.enabled() && smelter.coalUnlocked());
+        ironSmelter.update(smelter.iron(), smelter.wood() + smelter.coal(), smelter.enabled());
         var garrison = snapshot.garrison();
         garrisonControls.setVisible(garrison.capacity() > 0);
         garrisonTitle.setText(localizer.text("ui_garrison_workers", garrison.soldiers(), garrison.capacity()));

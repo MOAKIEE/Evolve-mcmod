@@ -87,9 +87,10 @@ const extras = {
         ui_bank_capacity: 'Increases money capacity by %0.', ui_banker_capacity: 'Adds %0 banker position.',
         ui_copper_mine: 'Mine', ui_miner_capacity: 'Adds %0 miner position.', ui_shed_copper: 'Increases copper storage capacity by %0.',
         ui_shed_iron: 'Increases iron storage capacity by %0.',
-        ui_smelter_title: 'Smelters: %0', ui_smelter_wood: 'Wood fuel', ui_smelter_iron: 'Iron boost',
+        ui_shed_coal: 'Increases coal storage capacity by %0.', ui_coal_miner_capacity: 'Adds %0 coal miner position.',
+        ui_smelter_coal: 'Coal fuel', ui_smelter_title: 'Smelters: %0', ui_smelter_wood: 'Wood fuel', ui_smelter_iron: 'Iron boost',
         ui_smelter_wood_cost: 'Each operating wood slot consumes %0 lumber per second.',
-        ui_smelter_allocation_desc: 'Wood slots consume 3 lumber/s when fuel is available. Each operating iron slot adds 10% iron production. Unassigned fuel refills one iron slot per simulation step.',
+        ui_smelter_allocation_desc: 'Fuel slots consume 3 lumber/s or 0.25 coal/s when available; increasing a fuel at full capacity replaces the other fuel. Each operating iron slot adds 10% iron production. Unassigned fuel refills one iron slot per simulation step.',
         ui_increase_slots: 'Add a slot', ui_decrease_slots: 'Remove a slot', ui_no_slots: 'No available slots.',
         ui_cement_worker_capacity: 'Adds %0 cement worker positions.', ui_shed_cement: 'Increases cement storage capacity by %0.',
         ui_sawmill_effect: 'Increases lumber production by %0% and storage capacity by %1.',
@@ -125,9 +126,10 @@ const extras = {
         ui_bank_capacity: '资金容量增加 %0。', ui_banker_capacity: '增加 %0 个银行家岗位。',
         ui_copper_mine: '矿井', ui_miner_capacity: '增加 %0 个矿工岗位。', ui_shed_copper: '铜存储容量增加 %0。',
         ui_shed_iron: '铁存储容量增加 %0。',
-        ui_smelter_title: '熔炉：%0', ui_smelter_wood: '木材燃料', ui_smelter_iron: '铁增产',
+        ui_shed_coal: '煤炭存储容量增加 %0。', ui_coal_miner_capacity: '增加 %0 个煤矿工岗位。',
+        ui_smelter_coal: '煤炭燃料', ui_smelter_title: '熔炉：%0', ui_smelter_wood: '木材燃料', ui_smelter_iron: '铁增产',
         ui_smelter_wood_cost: '每个运行中的木材燃料位消耗 %0 木材/秒。',
-        ui_smelter_allocation_desc: '有燃料时，每个木材燃料位消耗 3 木材/秒；每个实际运行的铁产物位增加 10% 铁产出。未分配的燃料位每次生产结算自动补回一个铁产物位。',
+        ui_smelter_allocation_desc: '每个运行的燃料位消耗 3 木材/秒或 0.25 煤炭/秒；满炉增加燃料会替换另一种燃料。每个实际运行的铁产物位增加 10% 铁产出。未分配的燃料位每次生产结算自动补回一个铁产物位。',
         ui_increase_slots: '增加一个分配位', ui_decrease_slots: '减少一个分配位', ui_no_slots: '没有可用的分配位。',
         ui_cement_worker_capacity: '增加 %0 个水泥工岗位。', ui_shed_cement: '水泥存储容量增加 %0。',
         ui_sawmill_effect: '木材产出增加 %0%，存储容量增加 %1。',
@@ -147,7 +149,7 @@ for (const [locale, file] of [['en_us', null], ['zh_cn', 'strings/strings.zh-CN.
     const translated = file ? { ...defaults, ...JSON.parse(read(file)) } : defaults;
     const selected = Object.fromEntries(Object.entries(translated)
         .filter(([key, value]) => typeof value === 'string' &&
-            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money|Copper|Iron|Cement|Furs|Plywood|Brick|Wrought_Iron)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?|shed_title1|university(?:_effect)?|max_knowledge|bank|smelter(?:_effect1)?|cement_plant|sawmill|foundry|crafted_mats|garrison|library(?:_effect)?)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining|storage|science|banking|investing|metal_working|copper_axes|copper_pickaxe|iron_mining|iron_axes|iron_pickaxe|smelting|cement|iron_saw|farm_house|reinforced_shed|foundry|artisans|garrison|library|thesis|research_grant|apprentices|carpentry)(?:_desc)?$|tech_(foundry|artisans|apprentices|carpentry)_effect$|job_(unemployed|farmer|lumberjack|quarry_worker|miner|professor|banker|cement_worker(?:_desc)?)$)/.test(key))
+            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money|Copper|Iron|Cement|Furs|Coal|Plywood|Brick|Wrought_Iron)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?|shed_title1|university(?:_effect)?|max_knowledge|bank|smelter(?:_effect1)?|cement_plant|sawmill|foundry|crafted_mats|garrison|coal_mine|library(?:_effect)?)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining|storage|science|banking|investing|metal_working|copper_axes|copper_pickaxe|iron_mining|iron_axes|iron_pickaxe|smelting|cement|iron_saw|farm_house|reinforced_shed|foundry|artisans|garrison|library|thesis|research_grant|apprentices|carpentry|coal_mining)(?:_desc)?$|tech_(foundry|artisans|apprentices|carpentry)_effect$|job_(unemployed|farmer|lumberjack|quarry_worker|miner|coal_miner|professor|banker|cement_worker(?:_desc)?)$)/.test(key))
         .map(([key, value]) => [`evolve.${key}`, plain(value)]));
     for (const [key, value] of Object.entries(extras[locale])) selected[`evolve.${key}`] = value;
     // Minecraft uses 1-based indexed format placeholders; the upstream uses %0, %1, ... .

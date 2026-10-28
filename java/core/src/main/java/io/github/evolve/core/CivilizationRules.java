@@ -16,11 +16,11 @@ final class CivilizationRules {
                 Function<EvolutionState, Map<String, Double>> costs, Consumer<EvolutionState> effect,
                 Function<EvolutionState, List<TextRef>> tooltip, String structure, String gathers) {}
 
-    static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "Copper", "Iron", "Cement", "Furs", "Plywood", "Brick", "Wrought_Iron", "human");
-    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank", "mine", "smelter", "cement_plant", "sawmill", "foundry", "garrison", "library");
-    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "miner", "craft_Plywood", "craft_Brick", "craft_Wrought_Iron", "cement_worker", "professor", "banker");
+    static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "Copper", "Iron", "Cement", "Furs", "Coal", "Plywood", "Brick", "Wrought_Iron", "human");
+    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank", "mine", "smelter", "cement_plant", "sawmill", "foundry", "garrison", "library", "coal_mine");
+    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "miner", "coal_miner", "craft_Plywood", "craft_Brick", "craft_Wrought_Iron", "cement_worker", "professor", "banker");
     static final Map<String, Integer> TECH_MAX = Map.ofEntries(Map.entry("primitive", 3), Map.entry("housing", 1),
-            Map.entry("agriculture", 2), Map.entry("currency", 1), Map.entry("axe", 3), Map.entry("mining", 3),
+            Map.entry("agriculture", 2), Map.entry("currency", 1), Map.entry("axe", 3), Map.entry("mining", 4),
             Map.entry("storage", 2), Map.entry("science", 4), Map.entry("banking", 2), Map.entry("pickaxe", 2), Map.entry("smelting", 1),
             Map.entry("cement", 1), Map.entry("saw", 1), Map.entry("farm", 1), Map.entry("foundry", 4), Map.entry("military", 1));
     static final Map<String, Rule> ALL = build();
@@ -53,6 +53,7 @@ final class CivilizationRules {
         state.resources.put("Iron", new EvolutionState.Resource(0, 100, false));
         state.resources.put("Cement", new EvolutionState.Resource(0, 100, false));
         state.resources.put("Furs", new EvolutionState.Resource(0, 100, false));
+        state.resources.put("Coal", new EvolutionState.Resource(0, 50, false));
         CraftingRules.RECIPES.forEach(r -> state.resources.put(r.resource(), new EvolutionState.Resource(0, -1, false)));
         state.resources.put("human", new EvolutionState.Resource(0, 0, false));
         state.traits.clear();
@@ -73,6 +74,7 @@ final class CivilizationRules {
             case "professor" -> state.count("university") > 0;
             case "banker" -> state.tech("banking") >= 2;
             case "miner" -> state.count("mine") > 0;
+            case "coal_miner" -> state.count("coal_mine") > 0;
             case "cement_worker" -> state.count("cement_plant") > 0;
             default -> false;
         };
@@ -85,6 +87,7 @@ final class CivilizationRules {
             case "professor" -> state.count("university");
             case "banker" -> state.count("bank");
             case "miner" -> state.count("mine");
+            case "coal_miner" -> state.count("coal_mine");
             case "cement_worker" -> state.count("cement_plant") * 2;
             default -> -1;
         };
@@ -100,6 +103,7 @@ final class CivilizationRules {
         state.resources.get("Iron").capacity = 100 + (state.resources.get("Iron").visible ? (double) shedCapacity(125, state.tech("storage")) * state.count("shed") : 0);
         state.resources.get("Cement").capacity = 100 + (state.resources.get("Cement").visible ? (double) shedCapacity(100, state.tech("storage")) * state.count("shed") : 0);
         state.resources.get("Furs").capacity = 100 + (state.resources.get("Furs").visible ? (double) shedCapacity(125, state.tech("storage")) * state.count("shed") : 0);
+        state.resources.get("Coal").capacity = 50 + (state.resources.get("Coal").visible ? (double) shedCapacity(75, state.tech("storage")) * state.count("shed") : 0);
         var population = state.resources.get("human");
         population.capacity = state.count("basic_housing") + (state.tech("farm") > 0 ? state.count("farm") : 0);
         population.visible = population.capacity > 0;
@@ -147,6 +151,8 @@ final class CivilizationRules {
         produce(state, "Copper", workers.get("miner") * (1 + state.tech("pickaxe") * 0.15) * (1d / 7) * hunger * multiplier);
         produce(state, "Iron", state.resources.get("Iron").visible ? workers.get("miner") * (1 + state.tech("pickaxe") * 0.15) * 0.25 *
                 (1 + smelting.iron() * 0.1) * hunger * multiplier : 0);
+        produce(state, "Coal", workers.get("coal_miner") * (1 + state.tech("pickaxe") * 0.12) * 0.2 * hunger * multiplier);
+        state.resources.get("Coal").rate -= smelting.coalPerSecond();
         // The original income block runs after population changes and rounds each fastLoop deposit.
         double income = state.tech("currency") > 0 ? (population.amount + soldiers - unemployed) * 0.4 : 0;
         if (fed && state.tech("banking") >= 2) income *= 1 + workers.get("banker") * 0.1;
@@ -190,7 +196,7 @@ final class CivilizationRules {
         state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.assigned(), civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact());
     }
 
-    private record Smelting(int iron, double woodPerSecond) {}
+    private record Smelting(int iron, double woodPerSecond, double coalPerSecond) {}
 
     static void setSmelter(EvolutionState state, SmelterState smelter) {
         var civ = state.civilization;
@@ -198,14 +204,18 @@ final class CivilizationRules {
     }
 
     private static Smelting smelt(EvolutionState state) {
-        if (state.count("smelter") == 0) return new Smelting(0, 0);
+        if (state.count("smelter") == 0) return new Smelting(0, 0, 0);
         var current = state.civilization.smelter();
-        int iron = current.iron() < current.wood() ? current.iron() + 1 : current.iron();
-        setSmelter(state, new SmelterState(current.wood(), iron));
-        int operable = Math.min(current.wood(), (int) Math.floor(state.amount("Lumber") / 0.75));
-        double consume = operable * 3d;
-        state.resources.get("Lumber").addCapped(-consume * 0.25);
-        return new Smelting(Math.max(0, iron - (current.wood() - operable)), consume);
+        int total = current.wood() + current.coal();
+        int iron = current.iron() < total ? current.iron() + 1 : current.iron();
+        setSmelter(state, new SmelterState(current.wood(), current.coal(), iron));
+        int operableWood = Math.min(current.wood(), (int) Math.floor(state.amount("Lumber") / 0.75));
+        int operableCoal = Math.min(current.coal(), (int) Math.floor(state.amount("Coal") / 0.0625));
+        double wood = operableWood * 3d;
+        double coal = operableCoal * 0.25;
+        state.resources.get("Lumber").addCapped(-wood * 0.25);
+        state.resources.get("Coal").addCapped(-coal * 0.25);
+        return new Smelting(Math.max(0, iron - (total - operableWood - operableCoal)), wood, coal);
     }
 
     private static void produce(EvolutionState state, String id, double rate) {
@@ -260,6 +270,10 @@ final class CivilizationRules {
             s.resources.get("Iron").visible = true;
             if (s.count("foundry") > 0) s.resources.get("Wrought_Iron").visible = true;
         });
+        research(rules, "coal_mining", Map.of("mining", 3), "mining", 4, Map.of("Knowledge", 4320d), s -> {
+            s.structures.put("coal_mine", 0);
+            s.resources.get("Coal").visible = true;
+        });
         research(rules, "iron_axes", Map.of("axe", 2, "mining", 3), "axe", 3, Map.of("Knowledge", 2700d, "Iron", 250d), s -> {});
         research(rules, "iron_pickaxe", Map.of("pickaxe", 1, "mining", 3), "pickaxe", 2, Map.of("Knowledge", 3200d, "Iron", 250d), s -> {});
         research(rules, "smelting", Map.of("mining", 3), "smelting", 1, Map.of("Knowledge", 4050d), s -> s.structures.put("smelter", 0));
@@ -294,6 +308,7 @@ final class CivilizationRules {
                     if (s.resources.get("Iron").visible) s.resources.get("Iron").capacity += shedCapacity(125, s.tech("storage"));
                     if (s.resources.get("Cement").visible) s.resources.get("Cement").capacity += shedCapacity(100, s.tech("storage"));
                     if (s.resources.get("Furs").visible) s.resources.get("Furs").capacity += shedCapacity(125, s.tech("storage"));
+                    if (s.resources.get("Coal").visible) s.resources.get("Coal").capacity += shedCapacity(75, s.tech("storage"));
                 }, CivilizationRules::shedTooltip, "shed", null));
         rules.put("city-university", new Rule("city-university", "science", "city_university",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("science") > 0,
@@ -327,13 +342,18 @@ final class CivilizationRules {
                 s -> Map.of("Money", scaled(60, 1.6, s.count("mine")), "Lumber", scaled(175, 1.38, s.count("mine"))),
                 s -> { s.addStructure("mine"); s.resources.get("Copper").visible = true; },
                 s -> List.of(TextRef.of("ui_miner_capacity", 1)), "mine", null));
+        rules.put("city-coal_mine", new Rule("city-coal_mine", "industrial", "city_coal_mine",
+                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("mining") >= 4,
+                s -> Map.of("Money", scaled(480, 1.4, s.count("coal_mine")), "Lumber", scaled(250, 1.36, s.count("coal_mine")),
+                        "Wrought_Iron", scaled(18, 1.36, s.count("coal_mine"))),
+                s -> s.addStructure("coal_mine"), s -> List.of(TextRef.of("ui_coal_miner_capacity", 1)), "coal_mine", null));
         rules.put("city-smelter", new Rule("city-smelter", "industrial", "city_smelter",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("smelting") > 0,
                 s -> Map.of("Money", scaled(1000, 1.32, s.count("smelter")), "Iron", scaled(500, 1.33, s.count("smelter"))),
                 s -> {
                     s.addStructure("smelter");
                     var current = s.civilization.smelter();
-                    setSmelter(s, new SmelterState(current.wood() + 1, current.iron() + 1));
+                    setSmelter(s, new SmelterState(current.wood() + 1, current.coal(), current.iron() + 1));
                 }, s -> List.of(TextRef.of("city_smelter_effect1", 10), TextRef.of("ui_smelter_wood_cost", 3)), "smelter", null));
         rules.put("city-cement_plant", new Rule("city-cement_plant", "industrial", "city_cement_plant",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("cement") > 0,
@@ -394,6 +414,7 @@ final class CivilizationRules {
         if (state.resources.get("Iron").visible) texts.add(TextRef.of("ui_shed_iron", shedCapacity(125, state.tech("storage"))));
         if (state.resources.get("Cement").visible) texts.add(TextRef.of("ui_shed_cement", shedCapacity(100, state.tech("storage"))));
         if (state.resources.get("Furs").visible) texts.add(TextRef.of("ui_shed_furs", shedCapacity(125, state.tech("storage"))));
+        if (state.resources.get("Coal").visible) texts.add(TextRef.of("ui_shed_coal", shedCapacity(75, state.tech("storage"))));
         return List.copyOf(texts);
     }
 

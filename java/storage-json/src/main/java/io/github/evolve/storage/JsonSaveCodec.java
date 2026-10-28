@@ -109,15 +109,15 @@ public final class JsonSaveCodec implements SaveCodec<String> {
         integers(civilization, "unemployed");
         booleans(civilization, "capacitiesInitialized");
         number(civilization.get("professorImpact"));
-        var smelter = fields(civilization.get("smelter"), "wood", "iron");
-        integers(smelter, "wood", "iron");
+        var smelter = fields(civilization.get("smelter"), "wood", "coal", "iron");
+        integers(smelter, "wood", "coal", "iron");
         var garrison = fields(civilization.get("garrison"), "soldiers", "trainingProgress", "trainingRate");
         integers(garrison, "soldiers");
         number(garrison.get("trainingProgress"));
         number(garrison.get("trainingRate"));
         for (String section : Set.of("workers", "assigned")) {
             var workers = fields(civilization.get(section), root.get("phase").getAsString().equals("PRIMITIVE") ?
-                    new String[] { "farmer", "lumberjack", "quarry_worker", "miner", "craft_Plywood", "craft_Brick", "craft_Wrought_Iron", "cement_worker", "professor", "banker" } : new String[] {});
+                    new String[] { "farmer", "lumberjack", "quarry_worker", "miner", "coal_miner", "craft_Plywood", "craft_Brick", "craft_Wrought_Iron", "cement_worker", "professor", "banker" } : new String[] {});
             workers.entrySet().forEach(entry -> int32(entry.getValue()));
         }
         if (!root.get("resources").isJsonObject()) throw new SaveFormatException("Invalid resources");

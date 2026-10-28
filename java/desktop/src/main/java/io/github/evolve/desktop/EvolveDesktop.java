@@ -578,6 +578,44 @@ public final class EvolveDesktop {
         if (Math.abs(panel.engine().exportSave().resources().get("Plywood").changePerSecond() - (ratio - 0.03) * 2 / 140) > 1e-9)
             throw new IllegalStateException("Apprentice controls used the previous session");
         render(panel, Path.of("build/preview-carpentry.png"), 1660);
+        coalSmokeTest(panel);
+    }
+
+    private static void coalSmokeTest(EvolvePanel panel) throws Exception {
+        panel.jobButton("craft_Plywood", false).doClick();
+        panel.jobButton("craft_Plywood", false).doClick();
+        panel.jobButton("cement_worker", false).doClick();
+        waitFor(panel, "Knowledge", 4320);
+        alignMidLoop(panel);
+        panel.actionButton("tech-coal_mining").doClick();
+        if (panel.engine().exportSave().resources().get("Coal").capacity() != 50)
+            throw new IllegalStateException("Coal shed storage applied before midLoop");
+        if (!panel.saveGame()) throw new IllegalStateException("Coal research save failed");
+        panel.engine().advanceTicks(20);
+        panel.loadGame();
+        if (panel.engine().exportSave().resources().get("Coal").capacity() != 50)
+            throw new IllegalStateException("Loading applied pending coal storage");
+        buyWithStorage(panel, "city-coal_mine");
+        panel.jobButton("coal_miner", true).doClick();
+        waitFor(panel, "Coal", 1);
+        panel.smelterButton("Coal", true).doClick();
+        if (panel.engine().exportSave().civilization().smelter().coal() != 1 ||
+                panel.engine().exportSave().civilization().smelter().wood() != 0)
+            throw new IllegalStateException("Coal fuel did not replace wood");
+        panel.engine().advanceTicks(5);
+        if (Math.abs(panel.engine().exportSave().resources().get("Coal").changePerSecond() - (1.24 * 0.2 - 0.25)) > 1e-9)
+            throw new IllegalStateException("Coal net production failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Coal fuel save failed");
+        var saved = panel.engine().exportSave();
+        panel.smelterButton("Wood", true).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Loading changed coal fuel");
+        panel.smelterButton("Wood", true).doClick();
+        if (panel.engine().exportSave().civilization().smelter().coal() != 0)
+            throw new IllegalStateException("Fuel control used the previous session");
+        panel.smelterButton("Coal", true).doClick();
+        panel.refresh();
+        render(panel, Path.of("build/preview-coal.png"), 1720);
     }
 
     private static void alignMidLoop(EvolvePanel panel) {

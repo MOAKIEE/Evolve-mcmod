@@ -11,6 +11,6 @@ public sealed interface GameCommand permits GameCommand.Action, GameCommand.Paus
     /** Positive delta recruits from unemployed citizens; negative delta returns workers. */
     record AssignJob(String jobId, int delta) implements GameCommand {}
 
-    /** Adjust configured fuel (Wood) or product (Iron) slots; resource amounts remain server-owned. */
+    /** Adjust configured fuel (Wood/Coal) or product (Iron) slots; resource amounts remain server-owned. */
     record AdjustSmelter(String allocationId, int delta) implements GameCommand {}
 }

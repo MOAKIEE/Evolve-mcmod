@@ -27,7 +27,7 @@ public record GameSnapshot(long revision, long elapsedTicks, Phase phase, boolea
 
     public record JobView(String id, TextRef name, int workers, int capacity, boolean defaultJob) {}
 
-    public record SmelterView(int capacity, int wood, int iron, boolean enabled) {}
+    public record SmelterView(int capacity, int wood, int coal, int iron, boolean coalUnlocked, boolean enabled) {}
 
     /** Training rate is percentage points per second; full barracks retain the last computed rate. */
     public record GarrisonView(int capacity, int soldiers, double trainingProgress, double trainingPerSecond) {}

@@ -190,8 +190,9 @@ class JsonPersistenceTest {
         resources.put("Knowledge", new GameSave.ResourceState(0, 600, true, 0));
         resources.put("Money", new GameSave.ResourceState(0, 1000, true, 0));
         resources.put("human", new GameSave.ResourceState(2, 2, true, 0));
-        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "craft_Plywood", 0, "craft_Brick", 0, "craft_Wrought_Iron", 0, "cement_worker", 0, "professor", 0, "banker", 0);
-        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "craft_Plywood", 0, "craft_Brick", 0, "craft_Wrought_Iron", 0, "cement_worker", 0, "professor", 1, "banker", 0);
+        var workers = new LinkedHashMap<>(save.civilization().workers());
+        var assigned = new LinkedHashMap<>(workers);
+        assigned.put("professor", 1);
         return new GameSave(save.schemaVersion(), save.ruleset(), 0, 0, 0, 0, false, save.phase(), save.randomSeed(),
                 save.species(), save.genus(), save.progress(), save.context(), resources,
                 Map.of("basic_housing", 2, "shed", 1, "university", 1),
@@ -690,6 +691,67 @@ class JsonPersistenceTest {
         var root = JsonParser.parseString(codec.encode(EvolutionEngine.newGame(2).exportSave())).getAsJsonObject();
         change.accept(root);
         assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+    }
+
+    @Test
+    void coalFuelRoundTripPreservesPendingStorageRefillAndExactFuelThreshold() {
+        var base = scienceSave();
+        var root = JsonParser.parseString(codec.encode(base)).getAsJsonObject();
+        var resources = root.getAsJsonObject("resources");
+        for (String id : java.util.List.of("Copper", "Iron", "Plywood", "Brick", "Wrought_Iron"))
+            resources.getAsJsonObject(id).addProperty("visible", true);
+        resources.getAsJsonObject("Lumber").addProperty("amount", 1.5);
+        resources.getAsJsonObject("Coal").addProperty("visible", true);
+        resources.getAsJsonObject("Coal").addProperty("amount", 0.0625);
+        var tech = root.getAsJsonObject("technologies");
+        tech.addProperty("mining", 4);
+        tech.addProperty("foundry", 1);
+        tech.addProperty("smelting", 1);
+        var structures = root.getAsJsonObject("structures");
+        structures.addProperty("rock_quarry", 0);
+        structures.addProperty("mine", 1);
+        structures.addProperty("foundry", 1);
+        structures.addProperty("coal_mine", 1);
+        structures.addProperty("smelter", 2);
+        var civ = root.getAsJsonObject("civilization");
+        civ.addProperty("unemployed", 1);
+        civ.getAsJsonObject("workers").addProperty("miner", 1);
+        civ.getAsJsonObject("assigned").addProperty("miner", 1);
+        civ.getAsJsonObject("assigned").addProperty("coal_miner", 1);
+        civ.getAsJsonObject("smelter").addProperty("wood", 1);
+        civ.getAsJsonObject("smelter").addProperty("coal", 1);
+        var save = codec.decode(root.toString());
+        assertEquals(50, save.resources().get("Coal").capacity());
+        var game = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        game.advanceTicks(5);
+        restored.advanceTicks(5);
+        assertEquals(game.exportSave(), restored.exportSave());
+        assertEquals(0.05, game.exportSave().resources().get("Coal").amount(), 1e-12);
+        assertEquals(-0.05, game.exportSave().resources().get("Coal").changePerSecond(), 1e-12);
+        assertEquals(1, game.exportSave().civilization().workers().get("coal_miner"));
+        game.advanceTicks(18);
+        restored.advanceTicks(18);
+        assertEquals(game.exportSave(), restored.exportSave());
+        assertEquals(125, game.exportSave().resources().get("Coal").capacity());
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                r -> r.addProperty("schemaVersion", 14),
+                r -> r.addProperty("ruleset", "evolve-1.4.10/carpentry-1"),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("smelter").remove("coal"),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("coal", -1),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("coal", 2),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("coal", 0.5),
+                r -> r.getAsJsonObject("resources").getAsJsonObject("Coal").addProperty("capacity", 49),
+                r -> r.getAsJsonObject("resources").getAsJsonObject("Coal").addProperty("capacity", 124),
+                r -> r.getAsJsonObject("technologies").addProperty("mining", 3),
+                r -> r.getAsJsonObject("structures").remove("coal_mine"),
+                r -> r.getAsJsonObject("structures").addProperty("foundry", 0),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("coal_miner", 2)
+        )) {
+            var changed = root.deepCopy();
+            change.accept(changed);
+            assertThrows(SaveFormatException.class, () -> codec.decode(changed.toString()));
+        }
     }
 
     @Test

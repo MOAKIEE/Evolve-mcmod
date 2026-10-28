@@ -166,17 +166,26 @@ public final class EvolutionEngine implements GameEngine {
             return result(Status.INVALID_COMMAND, 0);
         if (state.paused) return result(Status.PAUSED, 0);
         if (state.phase != Phase.PRIMITIVE || state.count("smelter") == 0 ||
-                !List.of("Wood", "Iron").contains(command.allocationId())) return result(Status.LOCKED, 0);
+                !List.of("Wood", "Coal", "Iron").contains(command.allocationId()) ||
+                command.allocationId().equals("Coal") && !state.resources.get("Coal").visible) return result(Status.LOCKED, 0);
         var current = state.civilization.smelter();
-        boolean fuel = command.allocationId().equals("Wood");
-        int available = command.delta() > 0 ? (fuel ? state.count("smelter") - current.wood() : current.wood() - current.iron()) :
-                (fuel ? current.wood() : current.iron());
+        boolean woodFuel = command.allocationId().equals("Wood");
+        boolean fuel = !command.allocationId().equals("Iron");
+        int selected = fuel ? (woodFuel ? current.wood() : current.coal()) : current.iron();
+        int total = current.wood() + current.coal();
+        int available = command.delta() > 0 ? (fuel ? state.count("smelter") - selected : total - current.iron()) : selected;
         int applied = Math.min(Math.abs(command.delta()), available);
         int change = command.delta() > 0 ? applied : -applied;
         if (applied > 0) {
-            int wood = fuel ? current.wood() + change : current.wood();
-            int iron = fuel ? (change > 0 ? current.iron() + change : Math.min(current.iron(), wood)) : current.iron() + change;
-            CivilizationRules.setSmelter(state, new SmelterState(wood, iron));
+            int wood = current.wood(), coal = current.coal(), iron = current.iron();
+            if (fuel) {
+                int added = Math.max(0, Math.min(change, state.count("smelter") - total));
+                int replaced = Math.max(0, change - added);
+                if (woodFuel) { wood += change; coal -= replaced; }
+                else { coal += change; wood -= replaced; }
+                iron = change > 0 ? iron + added : Math.min(iron, wood + coal);
+            } else iron += change;
+            CivilizationRules.setSmelter(state, new SmelterState(wood, coal, iron));
             state.revision += applied;
         }
         return result(applied == Math.abs(command.delta()) ? Status.OK : Status.NO_AVAILABLE_CAPACITY, applied);
@@ -296,7 +305,8 @@ public final class EvolutionEngine implements GameEngine {
         return new GameSnapshot(state.revision, state.elapsedTicks, state.phase, state.paused,
                 state.species, state.genus, state.progress, resources, actions, state.technologies, state.traits, jobs,
                 new GameSnapshot.SmelterView(state.count("smelter"), state.civilization.smelter().wood(),
-                        state.civilization.smelter().iron(), !state.paused && state.count("smelter") > 0),
+                        state.civilization.smelter().coal(), state.civilization.smelter().iron(),
+                        state.phase == Phase.PRIMITIVE && state.resources.get("Coal").visible, !state.paused && state.count("smelter") > 0),
                 new GameSnapshot.GarrisonView(state.count("garrison") * 2, state.civilization.garrison().soldiers(),
                         state.civilization.garrison().trainingProgress(), state.civilization.garrison().trainingRate() * 4));
     }
@@ -361,7 +371,7 @@ public final class EvolutionEngine implements GameEngine {
             boolean crafted = primitive && CraftingRules.RESOURCES.contains(entry.getKey());
             if (!Double.isFinite(resource.amount()) || !Double.isFinite(resource.capacity()) || !Double.isFinite(resource.changePerSecond()) ||
                     resource.amount() < 0 || resource.amount() > 1e15 || (crafted ? resource.capacity() != -1 :
-                    resource.capacity() < (entry.getKey().equals("human") ? 0 : 100) || resource.capacity() > 1e15 || resource.amount() > resource.capacity()))
+                    resource.capacity() < (entry.getKey().equals("human") ? 0 : entry.getKey().equals("Coal") ? 50 : 100) || resource.capacity() > 1e15 || resource.amount() > resource.capacity()))
                 throw new IllegalArgumentException("Invalid resource amount or capacity");
         }
         save.structures().forEach((id, count) -> {
@@ -430,6 +440,9 @@ public final class EvolutionEngine implements GameEngine {
         if (save.structures().containsKey("garrison") != military || military &&
                 (!housing || !save.technologies().containsKey("science")) || garrisons > 0 && !currency)
             throw new IllegalArgumentException("Missing garrison prerequisite");
+        int coalMines = save.structures().getOrDefault("coal_mine", 0);
+        if (save.structures().containsKey("coal_mine") != (mining >= 4) || coalMines > 0 && save.structures().getOrDefault("foundry", 0) == 0)
+            throw new IllegalArgumentException("Missing coal mining prerequisite or crafted material source");
         var garrison = save.civilization().garrison();
         if (garrison.soldiers() < 0 || garrison.soldiers() > 2L * garrisons ||
                 !Double.isFinite(garrison.trainingProgress()) || garrison.trainingProgress() < 0 || garrison.trainingProgress() >= 100 ||
@@ -468,8 +481,9 @@ public final class EvolutionEngine implements GameEngine {
         boolean smelting = save.technologies().containsKey("smelting");
         var smelter = save.civilization().smelter();
         if (save.structures().containsKey("smelter") != smelting || smelting && mining < 3 ||
-                smelter.wood() < 0 || smelter.wood() > save.structures().getOrDefault("smelter", 0) ||
-                smelter.iron() < 0 || smelter.iron() > smelter.wood())
+                smelter.wood() < 0 || smelter.coal() < 0 || smelter.coal() > 0 && mining < 4 ||
+                (long) smelter.wood() + smelter.coal() > save.structures().getOrDefault("smelter", 0) ||
+                smelter.iron() < 0 || smelter.iron() > (long) smelter.wood() + smelter.coal())
             throw new IllegalArgumentException("Invalid smelter allocation or prerequisite");
         boolean cement = save.technologies().containsKey("cement");
         boolean saw = save.technologies().containsKey("saw");
@@ -504,6 +518,7 @@ public final class EvolutionEngine implements GameEngine {
         checkStoredMaterial(save, "Iron", 125, mining >= 3, sheds);
         checkStoredMaterial(save, "Cement", 100, cementPlants > 0, sheds);
         checkStoredMaterial(save, "Furs", 125, garrisons > 0, sheds);
+        checkStoredMaterial(save, "Coal", 75, mining >= 4, sheds);
         var population = save.resources().get("human");
         double farmCapacity = population.capacity() - houses;
         if (farmCapacity != Math.rint(farmCapacity) || farmCapacity < 0 ||
@@ -523,6 +538,7 @@ public final class EvolutionEngine implements GameEngine {
                 case "professor" -> universities > 0;
                 case "banker" -> save.technologies().getOrDefault("banking", 0) >= 2;
                 case "miner" -> mines > 0;
+                case "coal_miner" -> coalMines > 0;
                 case "cement_worker" -> cementPlants > 0;
                 case "craft_Plywood", "craft_Brick" -> foundries > 0;
                 case "craft_Wrought_Iron" -> foundries > 0 && mining >= 3;
@@ -535,6 +551,7 @@ public final class EvolutionEngine implements GameEngine {
                 case "professor" -> universities;
                 case "banker" -> banks;
                 case "miner" -> mines;
+                case "coal_miner" -> coalMines;
                 case "cement_worker" -> cementPlants * 2;
                 case "craft_Plywood", "craft_Brick", "craft_Wrought_Iron" -> foundries;
                 default -> 1_000_000;
@@ -563,10 +580,11 @@ public final class EvolutionEngine implements GameEngine {
 
     private static void checkStoredMaterial(GameSave save, String id, int perShed, boolean visible, int sheds) {
         var resource = save.resources().get(id);
+        int base = id.equals("Coal") ? 50 : 100;
         // Unlocks and storage research apply to old sheds at the next midLoop; new sheds apply immediately.
-        if (resource.visible() != visible || !validShedGain(resource.capacity() - 100, perShed,
+        if (resource.visible() != visible || !validShedGain(resource.capacity() - base, perShed,
                 save.technologies().getOrDefault("storage", 0), sheds, false) ||
-                !visible && (resource.amount() != 0 || resource.capacity() != 100 || resource.changePerSecond() != 0))
+                !visible && (resource.amount() != 0 || resource.capacity() != base || resource.changePerSecond() != 0))
             throw new IllegalArgumentException("Inconsistent material capacity or visibility: " + id);
     }
 
