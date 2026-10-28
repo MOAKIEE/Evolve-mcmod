@@ -251,6 +251,34 @@ public final class EvolveDesktop {
             throw new IllegalStateException("Banker button used old session");
         panel.jobButton("banker", true).doClick();
         render(panel, Path.of("build/preview-banking.png"), 960);
+        copperSettlementSmokeTest(panel);
+    }
+
+    private static void copperSettlementSmokeTest(EvolvePanel panel) throws Exception {
+        buyWhenReady(panel, "tech-metal_working");
+        buyWhenReady(panel, "city-mine");
+        // Reassign the banker while food production supports seven working citizens.
+        panel.jobButton("banker", false).doClick();
+        panel.jobButton("miner", true).doClick();
+        if (panel.jobButton("miner", true).isEnabled() || !panel.jobButton("miner", false).isEnabled())
+            throw new IllegalStateException("Miner capacity controls failed");
+        buyWhenReady(panel, "tech-copper_axes");
+        buyWhenReady(panel, "tech-copper_pickaxe");
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        if (Math.abs(panel.engine().exportSave().resources().get("Copper").changePerSecond() - (1.15 / 7)) > 1e-9 ||
+                Math.abs(panel.engine().exportSave().resources().get("Lumber").changePerSecond() - 1.35 * 1.02) > 1e-9)
+            throw new IllegalStateException("Copper tools production failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Copper save failed");
+        var saved = panel.engine().exportSave();
+        panel.jobButton("miner", false).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Copper load failed");
+        panel.jobButton("miner", false).doClick();
+        if (panel.engine().exportSave().civilization().workers().get("miner") != 0)
+            throw new IllegalStateException("Miner button used old session");
+        panel.jobButton("miner", true).doClick();
+        render(panel, Path.of("build/preview-copper.png"), 1020);
     }
 
     private static void buyWhenReady(EvolvePanel panel, String id) {

@@ -386,12 +386,24 @@ public final class EvolutionEngine implements GameEngine {
         int sheds = save.structures().getOrDefault("shed", 0);
         int universities = save.structures().getOrDefault("university", 0);
         int banks = save.structures().getOrDefault("bank", 0);
+        int mines = save.structures().getOrDefault("mine", 0);
+        int mining = save.technologies().getOrDefault("mining", 0);
+        if (save.structures().containsKey("mine") != (mining >= 2) || mines > 0 && !currency ||
+                save.technologies().getOrDefault("axe", 0) >= 2 && (mining < 2 || mines == 0) ||
+                save.technologies().containsKey("pickaxe") && (mining < 2 || mines == 0))
+            throw new IllegalArgumentException("Missing copper mining prerequisite");
         if (universities > 0 && !currency) throw new IllegalArgumentException("Missing university currency prerequisite");
         checkResource(save, "Food", save.civilization().capacitiesInitialized() ? 1000 : 250, primitive >= 1);
         checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0) + 300d * sheds, true);
         checkResource(save, "Stone", 200 + 100d * save.structures().getOrDefault("rock_quarry", 0) + 300d * sheds, primitive >= 2);
         checkResource(save, "Knowledge", 100 + 500d * universities, primitive >= 3);
         checkResource(save, "Money", 1000 + 1800d * banks, currency);
+        var copper = save.resources().get("Copper");
+        double copperSheds = (copper.capacity() - 100) / 90;
+        // Old sheds begin storing a newly visible resource at the next midLoop. New sheds add capacity immediately.
+        if (copper.visible() != (mines > 0) || copperSheds != Math.rint(copperSheds) || copperSheds < 0 || copperSheds > sheds ||
+                !copper.visible() && (copper.amount() != 0 || copper.capacity() != 100 || copper.changePerSecond() != 0))
+            throw new IllegalArgumentException("Inconsistent copper capacity or visibility");
         checkResource(save, "human", houses, houses > 0);
         var population = save.resources().get("human");
         if (!save.civilization().workers().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)) ||
@@ -406,6 +418,7 @@ public final class EvolutionEngine implements GameEngine {
                 case "quarry_worker" -> save.structures().getOrDefault("rock_quarry", 0) > 0;
                 case "professor" -> universities > 0;
                 case "banker" -> save.technologies().getOrDefault("banking", 0) >= 2;
+                case "miner" -> mines > 0;
                 default -> false;
             };
             if (job.getValue() < 0 || job.getValue() > 1_000_000 || !visible && job.getValue() != 0)
@@ -414,6 +427,7 @@ public final class EvolutionEngine implements GameEngine {
             int capacity = switch (job.getKey()) {
                 case "professor" -> universities;
                 case "banker" -> banks;
+                case "miner" -> mines;
                 default -> 1_000_000;
             };
             if (target < job.getValue() || target > capacity || target < 0 || !visible && target != 0 || job.getValue() > capacity)

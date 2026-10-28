@@ -190,8 +190,8 @@ class JsonPersistenceTest {
         resources.put("Knowledge", new GameSave.ResourceState(0, 600, true, 0));
         resources.put("Money", new GameSave.ResourceState(0, 1000, true, 0));
         resources.put("human", new GameSave.ResourceState(2, 2, true, 0));
-        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "professor", 0, "banker", 0);
-        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "professor", 1, "banker", 0);
+        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "professor", 0, "banker", 0);
+        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "professor", 1, "banker", 0);
         return new GameSave(save.schemaVersion(), save.ruleset(), 0, 0, 0, 0, false, save.phase(), save.randomSeed(),
                 save.species(), save.genus(), save.progress(), save.context(), resources,
                 Map.of("basic_housing", 2, "shed", 1, "university", 1),
@@ -250,6 +250,51 @@ class JsonPersistenceTest {
                 resources, Map.of(), Map.of(), SpeciesCatalog.startingTraits("human"), CivilizationState.handoff("humanoid")));
         game.execute(new GameCommand.Action("civilization-start"));
         return game;
+    }
+
+    @Test
+    void copperRoundTripKeepsPendingStorageAndValidatesMiningDependencies() {
+        var base = scienceSave();
+        var resources = new LinkedHashMap<>(base.resources());
+        resources.put("Copper", new GameSave.ResourceState(25, 100, true, 0));
+        var assigned = new LinkedHashMap<>(base.civilization().assigned());
+        assigned.put("miner", 1);
+        var tech = new LinkedHashMap<>(base.technologies());
+        tech.put("mining", 2);
+        var structures = new LinkedHashMap<>(base.structures());
+        structures.put("rock_quarry", 0);
+        structures.put("mine", 1);
+        var save = new GameSave(base.schemaVersion(), base.ruleset(), 0, 0, 0, 0, false, base.phase(), base.randomSeed(),
+                base.species(), base.genus(), base.progress(), base.context(), resources, structures, tech, base.traits(),
+                new CivilizationState("humanoid", 2, base.civilization().workers(), assigned, false));
+        var original = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        assertEquals(100, restored.exportSave().resources().get("Copper").capacity());
+        original.advanceTicks(23);
+        restored.advanceTicks(23);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(190, restored.exportSave().resources().get("Copper").capacity());
+        assertEquals(1, restored.exportSave().civilization().workers().get("miner"));
+        assertEquals(1d / 7, restored.exportSave().resources().get("Copper").changePerSecond(), 1e-12);
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 5),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/banking-1"),
+                root -> root.getAsJsonObject("resources").remove("Copper"),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Copper").addProperty("visible", false),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Copper").addProperty("capacity", 101),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Copper").addProperty("capacity", 280),
+                root -> root.getAsJsonObject("structures").remove("mine"),
+                root -> root.getAsJsonObject("structures").remove("rock_quarry"),
+                root -> root.getAsJsonObject("technologies").addProperty("mining", 1),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").remove("miner"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("miner", 2),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("miner", 0.5),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("miner", 2)
+        )) {
+            var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
     }
 
     @Test
