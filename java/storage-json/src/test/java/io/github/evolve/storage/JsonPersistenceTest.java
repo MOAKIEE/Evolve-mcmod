@@ -190,8 +190,8 @@ class JsonPersistenceTest {
         resources.put("Knowledge", new GameSave.ResourceState(0, 600, true, 0));
         resources.put("Money", new GameSave.ResourceState(0, 1000, true, 0));
         resources.put("human", new GameSave.ResourceState(2, 2, true, 0));
-        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "professor", 0, "banker", 0);
-        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "professor", 1, "banker", 0);
+        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "cement_worker", 0, "professor", 0, "banker", 0);
+        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "cement_worker", 0, "professor", 1, "banker", 0);
         return new GameSave(save.schemaVersion(), save.ruleset(), 0, 0, 0, 0, false, save.phase(), save.randomSeed(),
                 save.species(), save.genus(), save.progress(), save.context(), resources,
                 Map.of("basic_housing", 2, "shed", 1, "university", 1),
@@ -355,6 +355,74 @@ class JsonPersistenceTest {
                 root -> root.getAsJsonObject("resources").getAsJsonObject("Iron").addProperty("capacity", 101),
                 root -> root.getAsJsonObject("resources").getAsJsonObject("Iron").addProperty("capacity", 1225),
                 root -> root.getAsJsonObject("technologies").addProperty("mining", 2)
+        )) {
+            var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
+    }
+
+    @Test
+    void cementRoundTripPreservesPendingStorageInputThresholdAndSawmillCapacity() {
+        var base = scienceSave();
+        var resources = new LinkedHashMap<>(base.resources());
+        resources.put("Lumber", new GameSave.ResourceState(0, 700, true, 0));
+        resources.put("Stone", new GameSave.ResourceState(0.75, 500, true, 0));
+        resources.put("Copper", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Iron", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Cement", new GameSave.ResourceState(0, 100, true, 0));
+        var workers = new LinkedHashMap<>(base.civilization().workers());
+        workers.put("lumberjack", 1);
+        workers.put("cement_worker", 1);
+        var tech = new LinkedHashMap<>(base.technologies());
+        tech.put("mining", 3);
+        tech.put("axe", 1);
+        tech.put("cement", 1);
+        tech.put("saw", 1);
+        var structures = new LinkedHashMap<>(base.structures());
+        structures.put("lumber_yard", 0);
+        structures.put("rock_quarry", 0);
+        structures.put("mine", 1);
+        structures.put("cement_plant", 1);
+        structures.put("sawmill", 1);
+        var save = new GameSave(base.schemaVersion(), base.ruleset(), 0, 0, 0, 0, false, base.phase(), base.randomSeed(),
+                base.species(), base.genus(), base.progress(), base.context(), resources, structures, tech, base.traits(),
+                new CivilizationState("humanoid", 0, workers, workers, false));
+        var original = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        assertEquals(100, restored.exportSave().resources().get("Cement").capacity());
+        original.advanceTicks(5);
+        restored.advanceTicks(5);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(0.1, restored.exportSave().resources().get("Cement").amount(), 1e-12);
+        assertEquals(-3, restored.exportSave().resources().get("Stone").changePerSecond());
+        assertEquals(1.05, restored.exportSave().resources().get("Lumber").changePerSecond());
+        restored = EvolutionEngine.restore(codec.decode(codec.encode(restored.exportSave())));
+        original.advanceTicks(18);
+        restored.advanceTicks(18);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(0.1, restored.exportSave().resources().get("Cement").amount(), 1e-12);
+        assertEquals(0, restored.exportSave().resources().get("Cement").changePerSecond());
+        assertEquals(200, restored.exportSave().resources().get("Cement").capacity());
+        assertEquals(700, restored.exportSave().resources().get("Lumber").capacity());
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 8),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/smelting-1"),
+                root -> root.getAsJsonObject("resources").remove("Cement"),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Cement").addProperty("visible", false),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Cement").addProperty("capacity", 101),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Cement").addProperty("capacity", 300),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Lumber").addProperty("capacity", 500),
+                root -> root.getAsJsonObject("technologies").remove("cement"),
+                root -> root.getAsJsonObject("technologies").remove("saw"),
+                root -> root.getAsJsonObject("technologies").remove("storage"),
+                root -> root.getAsJsonObject("technologies").addProperty("mining", 2),
+                root -> root.getAsJsonObject("structures").remove("cement_plant"),
+                root -> root.getAsJsonObject("structures").addProperty("cement_plant", 0),
+                root -> root.getAsJsonObject("structures").remove("sawmill"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").remove("cement_worker"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("cement_worker", 3),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("cement_worker", 3)
         )) {
             var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
             change.accept(root);

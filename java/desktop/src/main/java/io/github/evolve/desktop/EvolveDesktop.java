@@ -348,6 +348,39 @@ public final class EvolveDesktop {
         panel.engine().advanceTicks(20);
         panel.refresh();
         render(panel, Path.of("build/preview-smelting.png"), 1300);
+        cementSettlementSmokeTest(panel);
+    }
+
+    private static void cementSettlementSmokeTest(EvolvePanel panel) throws Exception {
+        panel.smelterButton("Wood", false).doClick();
+        buyWithStorage(panel, "tech-cement");
+        buyWithStorage(panel, "city-cement_plant");
+        if (panel.engine().exportSave().resources().get("Cement").capacity() != 100)
+            throw new IllegalStateException("Cement storage applied too early");
+        buyWithStorage(panel, "tech-iron_saw");
+        waitFor(panel, "Stone", 3000);
+        panel.jobButton("lumberjack", false).doClick();
+        panel.jobButton("cement_worker", true).doClick();
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        if (Math.abs(panel.engine().exportSave().resources().get("Cement").changePerSecond() - 0.4) > 1e-9)
+            throw new IllegalStateException("Cement production failed");
+        buyWithStorage(panel, "city-sawmill");
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        double lumber = 1.7 * 1.05 * (1 + panel.engine().exportSave().structures().get("lumber_yard") * 0.02);
+        if (Math.abs(panel.engine().exportSave().resources().get("Lumber").changePerSecond() - lumber) > 1e-9)
+            throw new IllegalStateException("Sawmill production failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Cement save failed");
+        var saved = panel.engine().exportSave();
+        panel.jobButton("cement_worker", false).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Cement load failed");
+        panel.jobButton("cement_worker", false).doClick();
+        if (panel.engine().exportSave().civilization().workers().get("cement_worker") != 0)
+            throw new IllegalStateException("Cement worker button used old session");
+        panel.jobButton("cement_worker", true).doClick();
+        render(panel, Path.of("build/preview-cement.png"), 1400);
     }
 
     private static void buyWithStorage(EvolvePanel panel, String id) {

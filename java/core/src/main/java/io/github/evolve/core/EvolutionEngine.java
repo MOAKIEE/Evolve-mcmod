@@ -413,6 +413,7 @@ public final class EvolutionEngine implements GameEngine {
         int universities = save.structures().getOrDefault("university", 0);
         int banks = save.structures().getOrDefault("bank", 0);
         int mines = save.structures().getOrDefault("mine", 0);
+        int cementPlants = save.structures().getOrDefault("cement_plant", 0);
         int mining = save.technologies().getOrDefault("mining", 0);
         if (save.structures().containsKey("mine") != (mining >= 2) || mines > 0 && !currency ||
                 save.technologies().getOrDefault("axe", 0) >= 2 && (mining < 2 || mines == 0) ||
@@ -427,14 +428,23 @@ public final class EvolutionEngine implements GameEngine {
                 smelter.wood() < 0 || smelter.wood() > save.structures().getOrDefault("smelter", 0) ||
                 smelter.iron() < 0 || smelter.iron() > smelter.wood())
             throw new IllegalArgumentException("Invalid smelter allocation or prerequisite");
+        boolean cement = save.technologies().containsKey("cement");
+        boolean saw = save.technologies().containsKey("saw");
+        if (save.structures().containsKey("cement_plant") != cement || cement &&
+                (mining < 1 || !save.technologies().containsKey("storage") || !save.technologies().containsKey("science")) ||
+                save.structures().containsKey("sawmill") != saw || saw &&
+                (mining < 3 || !save.technologies().containsKey("axe")) || save.structures().getOrDefault("sawmill", 0) > 0 && cementPlants == 0)
+            throw new IllegalArgumentException("Missing cement or sawmill prerequisite");
         if (universities > 0 && !currency) throw new IllegalArgumentException("Missing university currency prerequisite");
         checkResource(save, "Food", save.civilization().capacitiesInitialized() ? 1000 : 250, primitive >= 1);
-        checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0) + 300d * sheds, true);
+        checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0) + 300d * sheds +
+                200d * save.structures().getOrDefault("sawmill", 0), true);
         checkResource(save, "Stone", 200 + 100d * save.structures().getOrDefault("rock_quarry", 0) + 300d * sheds, primitive >= 2);
         checkResource(save, "Knowledge", 100 + 500d * universities, primitive >= 3);
         checkResource(save, "Money", 1000 + 1800d * banks, currency);
         checkStoredMaterial(save, "Copper", 90, mines > 0, sheds);
         checkStoredMaterial(save, "Iron", 125, mining >= 3, sheds);
+        checkStoredMaterial(save, "Cement", 100, cementPlants > 0, sheds);
         checkResource(save, "human", houses, houses > 0);
         var population = save.resources().get("human");
         if (!save.civilization().workers().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)) ||
@@ -450,6 +460,7 @@ public final class EvolutionEngine implements GameEngine {
                 case "professor" -> universities > 0;
                 case "banker" -> save.technologies().getOrDefault("banking", 0) >= 2;
                 case "miner" -> mines > 0;
+                case "cement_worker" -> cementPlants > 0;
                 default -> false;
             };
             if (job.getValue() < 0 || job.getValue() > 1_000_000 || !visible && job.getValue() != 0)
@@ -459,6 +470,7 @@ public final class EvolutionEngine implements GameEngine {
                 case "professor" -> universities;
                 case "banker" -> banks;
                 case "miner" -> mines;
+                case "cement_worker" -> cementPlants * 2;
                 default -> 1_000_000;
             };
             if (target < job.getValue() || target > capacity || target < 0 || !visible && target != 0 || job.getValue() > capacity)
