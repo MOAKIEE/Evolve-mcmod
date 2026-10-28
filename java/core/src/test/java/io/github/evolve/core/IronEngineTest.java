@@ -7,8 +7,7 @@ import static io.github.evolve.core.CommandResult.Status;
 import static org.junit.jupiter.api.Assertions.*;
 
 class IronEngineTest {
-    @Test
-    void normalProgressionBuildsCapacityForIronMiningAndBothIronTools() {
+    static EvolutionEngine ironToolsSettlement() {
         var game = ScienceEngineTest.researchSettlement();
         assertEquals(Status.OK, game.execute(new GameCommand.AssignJob("professor", 1)).status());
         buyExpanded(game, "city-farm");
@@ -36,6 +35,12 @@ class IronEngineTest {
         assertEquals(1.15 / 7, game.exportSave().resources().get("Copper").changePerSecond(), 1e-12);
         buyExpanded(game, "tech-iron_axes");
         buyExpanded(game, "tech-iron_pickaxe");
+        return game;
+    }
+
+    @Test
+    void normalProgressionBuildsCapacityForIronMiningAndBothIronTools() {
+        var game = ironToolsSettlement();
         game.advanceTicks(20);
         assertEquals(3, game.exportSave().technologies().get("axe"));
         assertEquals(2, game.exportSave().technologies().get("pickaxe"));
@@ -70,17 +75,23 @@ class IronEngineTest {
         assertEquals(before, game.exportSave());
     }
 
-    private static void buyExpanded(EvolutionEngine game, String id) {
+    static void buyExpanded(EvolutionEngine game, String id) {
         var action = game.snapshot().actions().stream().filter(a -> a.id().equals(id)).findFirst().orElseThrow();
         for (int expansions = 0; !action.fitsStorage(); expansions++) {
             assertTrue(expansions < 100, "Expansion stalled: " + id);
             var save = game.exportSave();
             var blocked = action.costs().entrySet().stream().filter(e -> e.getValue() > save.resources().get(e.getKey()).capacity()).findFirst().orElseThrow();
-            String expansion = switch (blocked.getKey()) {
-                case "Money" -> "city-bank";
-                case "Knowledge" -> "city-university";
-                default -> "city-shed";
+            var candidates = switch (blocked.getKey()) {
+                case "Money" -> java.util.List.of("city-bank");
+                case "Knowledge" -> java.util.List.of("city-university");
+                case "Lumber" -> java.util.List.of("city-shed", "city-lumber_yard");
+                case "Stone" -> java.util.List.of("city-shed", "city-rock_quarry");
+                default -> java.util.List.of("city-shed");
             };
+            var actions = game.snapshot().actions();
+            String expansion = candidates.stream().filter(candidate -> !candidate.equals(id)).filter(candidate ->
+                    actions.stream().anyMatch(a -> a.id().equals(candidate) && a.fitsStorage())).findFirst().orElse(candidates.getFirst());
+            assertNotEquals(id, expansion, "No available storage expansion for " + id);
             buyExpanded(game, expansion);
             action = game.snapshot().actions().stream().filter(a -> a.id().equals(id)).findFirst().orElseThrow();
         }

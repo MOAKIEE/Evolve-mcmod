@@ -367,4 +367,62 @@ class JsonPersistenceTest {
         change.accept(root);
         assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
     }
+
+    @Test
+    void smeltingRoundTripPreservesFuelAndUnderassignedIronAcrossLoopBoundaries() {
+        var base = scienceSave();
+        var resources = new LinkedHashMap<>(base.resources());
+        resources.put("Lumber", new GameSave.ResourceState(1.5, 5000, true, 0));
+        resources.put("Stone", new GameSave.ResourceState(0, 5000, true, 0));
+        resources.put("Knowledge", new GameSave.ResourceState(0, 4100, true, 0));
+        resources.put("Money", new GameSave.ResourceState(0, 15400, true, 0));
+        resources.put("Copper", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Iron", new GameSave.ResourceState(0, 100, true, 0));
+        var assigned = new LinkedHashMap<>(base.civilization().assigned());
+        assigned.put("miner", 1);
+        var tech = new LinkedHashMap<>(base.technologies());
+        tech.put("mining", 3);
+        tech.put("banking", 1);
+        tech.put("smelting", 1);
+        var save = new GameSave(base.schemaVersion(), base.ruleset(), 0, 0, 0, 0, false, base.phase(), base.randomSeed(),
+                base.species(), base.genus(), base.progress(), base.context(), resources,
+                Map.of("basic_housing", 2, "shed", 16, "university", 8, "bank", 8, "mine", 1, "rock_quarry", 0, "smelter", 2), tech, base.traits(),
+                new CivilizationState("humanoid", 2, base.civilization().workers(), assigned, false, new io.github.evolve.core.SmelterState(2, 0)));
+        var original = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        assertEquals(0, restored.snapshot().smelter().iron());
+        original.advanceTicks(5);
+        restored.advanceTicks(5);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(1, restored.snapshot().smelter().iron());
+        assertEquals(0, restored.exportSave().resources().get("Lumber").amount());
+        assertEquals(-6, restored.exportSave().resources().get("Lumber").changePerSecond());
+        assertEquals(0.25 * 1.1, restored.exportSave().resources().get("Iron").changePerSecond(), 1e-12);
+        restored = EvolutionEngine.restore(codec.decode(codec.encode(restored.exportSave())));
+        original.advanceTicks(18);
+        restored.advanceTicks(18);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(2, restored.snapshot().smelter().iron());
+        assertEquals(0.25, restored.exportSave().resources().get("Iron").changePerSecond());
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 7),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/iron-1"),
+                root -> root.getAsJsonObject("civilization").remove("smelter"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("smelter").remove("wood"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("wood", -1),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("wood", 3),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("wood", 0.5),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("wood", 4_294_967_296L),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("iron", 3),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("iron", -1),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("smelter").addProperty("Coal", 0),
+                root -> root.getAsJsonObject("structures").remove("smelter"),
+                root -> root.getAsJsonObject("technologies").remove("smelting"),
+                root -> root.getAsJsonObject("technologies").addProperty("mining", 2)
+        )) {
+            var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
+    }
 }

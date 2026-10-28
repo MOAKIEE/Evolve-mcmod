@@ -313,6 +313,41 @@ public final class EvolveDesktop {
             throw new IllegalStateException("Iron miner button used old session");
         panel.jobButton("miner", true).doClick();
         render(panel, Path.of("build/preview-iron.png"), 1100);
+        smeltingSettlementSmokeTest(panel);
+    }
+
+    private static void smeltingSettlementSmokeTest(EvolvePanel panel) throws Exception {
+        buyWithStorage(panel, "tech-smelting");
+        buyWithStorage(panel, "city-smelter");
+        panel.jobButton("banker", false).doClick();
+        panel.jobButton("lumberjack", true).doClick();
+        waitFor(panel, "Lumber", 10);
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        if (Math.abs(panel.engine().exportSave().resources().get("Iron").changePerSecond() - 1.3 * 0.25 * 1.1) > 1e-9)
+            throw new IllegalStateException("Wood smelting failed");
+        if (panel.smelterButton("Wood", true).isEnabled() || !panel.smelterButton("Wood", false).isEnabled())
+            throw new IllegalStateException("Smelter capacity controls failed");
+        panel.smelterButton("Wood", false).doClick();
+        if (panel.engine().snapshot().smelter().wood() != 0 || panel.engine().snapshot().smelter().iron() != 0)
+            throw new IllegalStateException("Removing fuel did not release iron slots");
+        panel.smelterButton("Wood", true).doClick();
+        panel.smelterButton("Iron", false).doClick();
+        if (!panel.saveGame()) throw new IllegalStateException("Smelter save failed");
+        var saved = panel.engine().exportSave();
+        panel.smelterButton("Iron", true).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Smelter load altered allocation");
+        panel.smelterButton("Wood", false).doClick();
+        if (panel.engine().snapshot().smelter().wood() != 0) throw new IllegalStateException("Smelter button used old session");
+        panel.smelterButton("Wood", true).doClick();
+        panel.engine().execute(new GameCommand.Pause(true));
+        panel.refresh();
+        if (panel.smelterButton("Wood", false).isEnabled()) throw new IllegalStateException("Paused smelter control enabled");
+        panel.engine().execute(new GameCommand.Pause(false));
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        render(panel, Path.of("build/preview-smelting.png"), 1300);
     }
 
     private static void buyWithStorage(EvolvePanel panel, String id) {
@@ -321,11 +356,18 @@ public final class EvolveDesktop {
             if (expansions >= 100) throw new IllegalStateException("GUI expansion stalled for " + id);
             var resources = panel.engine().exportSave().resources();
             var blocked = action.costs().entrySet().stream().filter(e -> e.getValue() > resources.get(e.getKey()).capacity()).findFirst().orElseThrow();
-            buyWithStorage(panel, switch (blocked.getKey()) {
-                case "Money" -> "city-bank";
-                case "Knowledge" -> "city-university";
-                default -> "city-shed";
-            });
+            var candidates = switch (blocked.getKey()) {
+                case "Money" -> java.util.List.of("city-bank");
+                case "Knowledge" -> java.util.List.of("city-university");
+                case "Lumber" -> java.util.List.of("city-shed", "city-lumber_yard");
+                case "Stone" -> java.util.List.of("city-shed", "city-rock_quarry");
+                default -> java.util.List.of("city-shed");
+            };
+            var actions = panel.engine().snapshot().actions();
+            String expansion = candidates.stream().filter(candidate -> !candidate.equals(id)).filter(candidate ->
+                    actions.stream().anyMatch(a -> a.id().equals(candidate) && a.fitsStorage())).findFirst().orElse(candidates.getFirst());
+            if (expansion.equals(id)) throw new IllegalStateException("No GUI storage expansion for " + id);
+            buyWithStorage(panel, expansion);
             action = panel.engine().snapshot().actions().stream().filter(a -> a.id().equals(id)).findFirst().orElseThrow();
         }
         action.costs().forEach((resource, amount) -> {

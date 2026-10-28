@@ -76,6 +76,17 @@ class CivilizationParityTest {
                 compare(test.getAsJsonObject("expected"), game);
             }));
         }
+        for (var item : fixtures.getAsJsonArray("smelterAssignments")) {
+            var test = item.getAsJsonObject();
+            tests.add(DynamicTest.dynamicTest("smelter/" + test.get("id") + "/" + test.get("delta") + "/" + tests.size(), () -> {
+                var game = engine(test);
+                int delta = test.get("delta").getAsInt();
+                var result = game.execute(new GameCommand.AdjustSmelter(test.get("id").getAsString(), delta));
+                assertEquals(test.get("applied").getAsInt(), result.applied());
+                assertEquals(result.applied() == Math.abs(delta) ? CommandResult.Status.OK : CommandResult.Status.NO_AVAILABLE_CAPACITY, result.status());
+                compare(test.getAsJsonObject("expected"), game);
+            }));
+        }
         return tests.stream();
     }
 
@@ -100,6 +111,7 @@ class CivilizationParityTest {
         assertEquals(GSON.fromJson(civilization.get("workers"), new TypeToken<Map<String, Integer>>() {}.getType()), save.civilization().workers());
         assertEquals(GSON.fromJson(civilization.get("assigned"), new TypeToken<Map<String, Integer>>() {}.getType()), save.civilization().assigned());
         assertEquals(civilization.get("capacitiesInitialized").getAsBoolean(), save.civilization().capacitiesInitialized());
+        assertEquals(GSON.fromJson(civilization.get("smelter"), SmelterState.class), save.civilization().smelter());
         if (expected.has("available")) availability(expected.getAsJsonArray("available"), game);
     }
 

@@ -61,6 +61,10 @@ public final class EvolvePanel extends JPanel {
     private final JPanel jobs = panel(new GridLayout(0, 1, 0, 6));
     private final JLabel jobTitle = label(17, ACCENT);
     private final Map<String, JobRow> jobRows = new LinkedHashMap<>();
+    private final JPanel smelterControls = panel(new GridLayout(0, 1, 0, 6));
+    private final JLabel smelterTitle = label(17, ACCENT);
+    private final SmelterRow woodSmelter = new SmelterRow("Wood", "ui_smelter_wood");
+    private final SmelterRow ironSmelter = new SmelterRow("Iron", "ui_smelter_iron");
     private final JButton pause = button();
     private final JButton save = button();
     private final JButton load = button();
@@ -126,7 +130,13 @@ public final class EvolvePanel extends JPanel {
         scroll.getViewport().setBackground(BACKGROUND);
         scroll.getVerticalScrollBar().setUnitIncrement(18);
         right.add(scroll, BorderLayout.CENTER);
-        right.add(jobs, BorderLayout.SOUTH);
+        var bottomControls = panel(new BorderLayout(0, 12));
+        bottomControls.add(jobs, BorderLayout.CENTER);
+        smelterControls.add(smelterTitle);
+        smelterControls.add(woodSmelter.panel);
+        smelterControls.add(ironSmelter.panel);
+        bottomControls.add(smelterControls, BorderLayout.SOUTH);
+        right.add(bottomControls, BorderLayout.SOUTH);
         content.add(right, BorderLayout.CENTER);
         add(content, BorderLayout.CENTER);
 
@@ -169,6 +179,10 @@ public final class EvolvePanel extends JPanel {
     String uiText(String key) { return localizer.text(key); }
     JButton actionButton(String id) { return actionButtons.get(id); }
     JButton jobButton(String id, boolean recruit) { return recruit ? jobRows.get(id).add : jobRows.get(id).remove; }
+    JButton smelterButton(String id, boolean increase) {
+        var row = id.equals("Wood") ? woodSmelter : ironSmelter;
+        return increase ? row.add : row.remove;
+    }
     void tick() { engine.advanceTicks(1); refresh(); }
     boolean dirty() { return engine.snapshot().revision() != savedRevision; }
 
@@ -251,6 +265,11 @@ public final class EvolvePanel extends JPanel {
         }
         int available = snapshot.jobs().stream().filter(GameSnapshot.JobView::defaultJob).mapToInt(GameSnapshot.JobView::workers).sum();
         for (var job : snapshot.jobs()) jobRows.get(job.id()).update(job, available, snapshot.paused());
+        var smelter = snapshot.smelter();
+        smelterControls.setVisible(smelter.capacity() > 0);
+        smelterTitle.setText(localizer.text("ui_smelter_title", smelter.capacity()));
+        woodSmelter.update(smelter.wood(), smelter.capacity(), smelter.enabled());
+        ironSmelter.update(smelter.iron(), smelter.wood(), smelter.enabled());
 
         List<String> ids = snapshot.actions().stream().map(GameSnapshot.ActionView::id).toList();
         if (!ids.equals(previousActionIds)) {
@@ -342,6 +361,45 @@ public final class EvolvePanel extends JPanel {
             remove.getAccessibleContext().setAccessibleName(localizer.text("ui_release_worker") + ": " + localizer.text(job.name()));
             add.setEnabled(!paused && available > 0 && (job.capacity() == -1 || job.workers() < job.capacity()));
             remove.setEnabled(!paused && job.workers() > 0);
+        }
+    }
+
+    private final class SmelterRow {
+        final JPanel panel = EvolvePanel.panel(new BorderLayout(10, 0));
+        final JLabel text = label(14, TEXT);
+        final JButton add = button();
+        final JButton remove = button();
+        final String name;
+        SmelterRow(String id, String name) {
+            this.name = name;
+            panel.setBorder(BorderFactory.createEmptyBorder(2, 10, 2, 8));
+            panel.setBackground(SURFACE);
+            panel.add(text, BorderLayout.CENTER);
+            var controls = EvolvePanel.panel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+            controls.setBackground(SURFACE);
+            add.setText("+");
+            remove.setText("−");
+            add.addActionListener(event -> adjust(id, 1));
+            remove.addActionListener(event -> adjust(id, -1));
+            controls.add(remove);
+            controls.add(add);
+            panel.add(controls, BorderLayout.EAST);
+        }
+        private void adjust(String id, int delta) {
+            var result = engine.execute(new GameCommand.AdjustSmelter(id, delta));
+            if (result.status() != CommandResult.Status.OK) status.setText(localizer.text(
+                    result.status() == CommandResult.Status.PAUSED ? "ui_paused" : "ui_no_slots"));
+            refresh();
+        }
+        void update(int count, int capacity, boolean enabled) {
+            text.setText(localizer.text("ui_job_workers_limited", localizer.text(name), count, capacity));
+            panel.setToolTipText(localizer.text("ui_smelter_allocation_desc"));
+            add.setToolTipText(localizer.text("ui_increase_slots"));
+            remove.setToolTipText(localizer.text("ui_decrease_slots"));
+            add.getAccessibleContext().setAccessibleName(localizer.text("ui_increase_slots") + ": " + localizer.text(name));
+            remove.getAccessibleContext().setAccessibleName(localizer.text("ui_decrease_slots") + ": " + localizer.text(name));
+            add.setEnabled(enabled && count < capacity);
+            remove.setEnabled(enabled && count > 0);
         }
     }
 

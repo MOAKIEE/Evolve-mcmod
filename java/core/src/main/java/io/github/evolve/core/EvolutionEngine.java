@@ -83,6 +83,7 @@ public final class EvolutionEngine implements GameEngine {
             return result(Status.OK, 1);
         }
         if (command instanceof GameCommand.AssignJob assignment) return assignJob(assignment);
+        if (command instanceof GameCommand.AdjustSmelter adjustment) return adjustSmelter(adjustment);
         if (!(command instanceof GameCommand.Action action) || action.actionId() == null ||
                 action.repetitions() < 1 || action.repetitions() > MAX_REPETITIONS)
             return result(Status.INVALID_COMMAND, 0);
@@ -131,7 +132,7 @@ public final class EvolutionEngine implements GameEngine {
             workers.put(command.jobId(), workers.get(command.jobId()) + change);
             var assigned = new LinkedHashMap<>(civ.assigned());
             assigned.put(command.jobId(), workers.get(command.jobId()));
-            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized());
+            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized(), civ.smelter());
             state.revision += applied;
         }
         return result(applied == Math.abs(command.delta()) ? Status.OK : Status.NO_AVAILABLE_WORKERS, applied);
@@ -158,6 +159,27 @@ public final class EvolutionEngine implements GameEngine {
             applied++;
         }
         return result(applied == action.repetitions() ? Status.OK : status, applied);
+    }
+
+    private CommandResult adjustSmelter(GameCommand.AdjustSmelter command) {
+        if (command.allocationId() == null || command.delta() == 0 || command.delta() < -MAX_REPETITIONS || command.delta() > MAX_REPETITIONS)
+            return result(Status.INVALID_COMMAND, 0);
+        if (state.paused) return result(Status.PAUSED, 0);
+        if (state.phase != Phase.PRIMITIVE || state.count("smelter") == 0 ||
+                !List.of("Wood", "Iron").contains(command.allocationId())) return result(Status.LOCKED, 0);
+        var current = state.civilization.smelter();
+        boolean fuel = command.allocationId().equals("Wood");
+        int available = command.delta() > 0 ? (fuel ? state.count("smelter") - current.wood() : current.wood() - current.iron()) :
+                (fuel ? current.wood() : current.iron());
+        int applied = Math.min(Math.abs(command.delta()), available);
+        int change = command.delta() > 0 ? applied : -applied;
+        if (applied > 0) {
+            int wood = fuel ? current.wood() + change : current.wood();
+            int iron = fuel ? (change > 0 ? current.iron() + change : Math.min(current.iron(), wood)) : current.iron() + change;
+            CivilizationRules.setSmelter(state, new SmelterState(wood, iron));
+            state.revision += applied;
+        }
+        return result(applied == Math.abs(command.delta()) ? Status.OK : Status.NO_AVAILABLE_CAPACITY, applied);
     }
 
     @Override
@@ -272,7 +294,9 @@ public final class EvolutionEngine implements GameEngine {
                 jobs.add(new GameSnapshot.JobView(job, TextRef.of("job_" + job), state.civilization.workers().get(job), CivilizationRules.jobCapacity(state, job), false));
         }
         return new GameSnapshot(state.revision, state.elapsedTicks, state.phase, state.paused,
-                state.species, state.genus, state.progress, resources, actions, state.technologies, state.traits, jobs);
+                state.species, state.genus, state.progress, resources, actions, state.technologies, state.traits, jobs,
+                new GameSnapshot.SmelterView(state.count("smelter"), state.civilization.smelter().wood(),
+                        state.civilization.smelter().iron(), !state.paused && state.count("smelter") > 0));
     }
 
     @Override
@@ -320,6 +344,7 @@ public final class EvolutionEngine implements GameEngine {
             throw new IllegalArgumentException("Inconsistent loop phase");
         validateContext(Objects.requireNonNull(save.context(), "context"));
         Objects.requireNonNull(save.civilization(), "civilization");
+        Objects.requireNonNull(save.civilization().smelter(), "smelter");
         boolean primitive = save.phase() == Phase.PRIMITIVE;
         if (!save.resources().keySet().equals(primitive ? CivilizationRules.RESOURCES : java.util.Set.of("RNA", "DNA")))
             throw new IllegalArgumentException("Invalid phase resources");
@@ -349,7 +374,8 @@ public final class EvolutionEngine implements GameEngine {
                     !save.structures().isEmpty() || !save.technologies().isEmpty() ||
                     save.resources().values().stream().anyMatch(GameSave.ResourceState::visible) ||
                     !SpeciesCatalog.startingTraits(save.species()).equals(save.traits()) || save.civilization().unemployed() != 0 ||
-                    !save.civilization().workers().isEmpty() || !save.civilization().assigned().isEmpty() || save.civilization().capacitiesInitialized())
+                    !save.civilization().workers().isEmpty() || !save.civilization().assigned().isEmpty() || save.civilization().capacitiesInitialized() ||
+                    !save.civilization().smelter().equals(SmelterState.empty()))
                 throw new IllegalArgumentException("Invalid civilization handoff");
             validatePrimaryGenus(save);
         } else if (primitive) {
@@ -395,6 +421,12 @@ public final class EvolutionEngine implements GameEngine {
         if (save.technologies().getOrDefault("axe", 0) >= 3 && mining < 3 ||
                 save.technologies().getOrDefault("pickaxe", 0) >= 2 && mining < 3)
             throw new IllegalArgumentException("Missing iron mining prerequisite");
+        boolean smelting = save.technologies().containsKey("smelting");
+        var smelter = save.civilization().smelter();
+        if (save.structures().containsKey("smelter") != smelting || smelting && mining < 3 ||
+                smelter.wood() < 0 || smelter.wood() > save.structures().getOrDefault("smelter", 0) ||
+                smelter.iron() < 0 || smelter.iron() > smelter.wood())
+            throw new IllegalArgumentException("Invalid smelter allocation or prerequisite");
         if (universities > 0 && !currency) throw new IllegalArgumentException("Missing university currency prerequisite");
         checkResource(save, "Food", save.civilization().capacitiesInitialized() ? 1000 : 250, primitive >= 1);
         checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0) + 300d * sheds, true);

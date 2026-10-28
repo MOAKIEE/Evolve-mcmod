@@ -10,7 +10,7 @@ public record GameSnapshot(long revision, long elapsedTicks, Phase phase, boolea
                            String species, String genus, int progress,
                            List<ResourceView> resources, List<ActionView> actions,
                            Map<String, Integer> technologies, Map<String, Double> traits,
-                           List<JobView> jobs) {
+                           List<JobView> jobs, SmelterView smelter) {
     public enum Phase { EVOLUTION, CIVILIZATION_READY, PRIMITIVE }
 
     public GameSnapshot {
@@ -25,6 +25,8 @@ public record GameSnapshot(long revision, long elapsedTicks, Phase phase, boolea
                                double changePerSecond, boolean visible) {}
 
     public record JobView(String id, TextRef name, int workers, int capacity, boolean defaultJob) {}
+
+    public record SmelterView(int capacity, int wood, int iron, boolean enabled) {}
 
     public record ActionView(String id, String category, TextRef title, List<TextRef> tooltip,
                              int count, Map<String, Double> costs,
