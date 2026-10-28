@@ -279,6 +279,64 @@ public final class EvolveDesktop {
             throw new IllegalStateException("Miner button used old session");
         panel.jobButton("miner", true).doClick();
         render(panel, Path.of("build/preview-copper.png"), 1020);
+        ironSettlementSmokeTest(panel);
+    }
+
+    private static void ironSettlementSmokeTest(EvolvePanel panel) throws Exception {
+        buyWithStorage(panel, "city-farm");
+        buyWithStorage(panel, "city-farm");
+        for (int i = 0; i < 3; i++) buyWithStorage(panel, "city-basic_housing");
+        waitFor(panel, "human", 10);
+        for (int i = 0; i < 2; i++) panel.jobButton("farmer", true).doClick();
+        panel.jobButton("banker", true).doClick();
+        buyWithStorage(panel, "tech-iron_mining");
+        if (panel.engine().exportSave().resources().get("Iron").capacity() != 100 || !panel.saveGame())
+            throw new IllegalStateException("Pending iron capacity save failed");
+        var pending = panel.engine().exportSave();
+        panel.loadGame();
+        if (!pending.equals(panel.engine().exportSave())) throw new IllegalStateException("Iron load applied capacity early");
+        buyWithStorage(panel, "tech-iron_axes");
+        buyWithStorage(panel, "tech-iron_pickaxe");
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        if (Math.abs(panel.engine().exportSave().resources().get("Iron").changePerSecond() - 1.3 * 0.25) > 1e-9 ||
+                Math.abs(panel.engine().exportSave().resources().get("Copper").changePerSecond() - 1.3 / 7) > 1e-9 ||
+                Math.abs(panel.engine().exportSave().resources().get("Lumber").changePerSecond() - 1.7 * 1.02) > 1e-9)
+            throw new IllegalStateException("Iron tools production failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Iron tools save failed");
+        var saved = panel.engine().exportSave();
+        panel.jobButton("miner", false).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Iron tools load failed");
+        panel.jobButton("miner", false).doClick();
+        if (panel.engine().exportSave().civilization().workers().get("miner") != 0)
+            throw new IllegalStateException("Iron miner button used old session");
+        panel.jobButton("miner", true).doClick();
+        render(panel, Path.of("build/preview-iron.png"), 1100);
+    }
+
+    private static void buyWithStorage(EvolvePanel panel, String id) {
+        var action = panel.engine().snapshot().actions().stream().filter(a -> a.id().equals(id)).findFirst().orElseThrow();
+        for (int expansions = 0; !action.fitsStorage(); expansions++) {
+            if (expansions >= 100) throw new IllegalStateException("GUI expansion stalled for " + id);
+            var resources = panel.engine().exportSave().resources();
+            var blocked = action.costs().entrySet().stream().filter(e -> e.getValue() > resources.get(e.getKey()).capacity()).findFirst().orElseThrow();
+            buyWithStorage(panel, switch (blocked.getKey()) {
+                case "Money" -> "city-bank";
+                case "Knowledge" -> "city-university";
+                default -> "city-shed";
+            });
+            action = panel.engine().snapshot().actions().stream().filter(a -> a.id().equals(id)).findFirst().orElseThrow();
+        }
+        action.costs().forEach((resource, amount) -> {
+            for (int attempts = 0; panel.engine().exportSave().resources().get(resource).amount() < amount; attempts++) {
+                if (attempts >= 600) throw new IllegalStateException("GUI production stalled for " + resource);
+                panel.engine().advanceTicks(200);
+            }
+        });
+        panel.refresh();
+        if (!panel.actionButton(id).isEnabled()) throw new IllegalStateException("GUI action unavailable: " + id);
+        panel.actionButton(id).doClick();
     }
 
     private static void buyWhenReady(EvolvePanel panel, String id) {
@@ -297,6 +355,16 @@ public final class EvolveDesktop {
     }
 
     private static void render(EvolvePanel panel, Path output, int height) throws Exception {
+        for (String locale : java.util.List.of("en_us", "zh_cn")) {
+            var localizer = new Localizer(locale);
+            var snapshot = panel.engine().snapshot();
+            var texts = new java.util.ArrayList<io.github.evolve.core.TextRef>();
+            snapshot.resources().forEach(resource -> texts.add(resource.name()));
+            snapshot.jobs().forEach(job -> texts.add(job.name()));
+            snapshot.actions().forEach(action -> { texts.add(action.title()); texts.addAll(action.tooltip()); });
+            for (var text : texts) if (localizer.text(text).startsWith("evolve."))
+                throw new IllegalStateException("Missing " + locale + " translation: " + text.key());
+        }
         panel.setSize(1120, height);
         layoutTree(panel);
         var image = new BufferedImage(1120, height, BufferedImage.TYPE_INT_RGB);

@@ -16,10 +16,10 @@ final class CivilizationRules {
                 Function<EvolutionState, Map<String, Double>> costs, Consumer<EvolutionState> effect,
                 Function<EvolutionState, List<TextRef>> tooltip, String structure, String gathers) {}
 
-    static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "Copper", "human");
+    static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "Copper", "Iron", "human");
     static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank", "mine");
     static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "miner", "professor", "banker");
-    static final Map<String, Integer> TECH_MAX = Map.of("primitive", 3, "housing", 1, "agriculture", 2, "currency", 1, "axe", 2, "mining", 2, "storage", 1, "science", 1, "banking", 2, "pickaxe", 1);
+    static final Map<String, Integer> TECH_MAX = Map.of("primitive", 3, "housing", 1, "agriculture", 2, "currency", 1, "axe", 3, "mining", 3, "storage", 1, "science", 1, "banking", 2, "pickaxe", 2);
     static final Map<String, Rule> ALL = build();
 
     private CivilizationRules() {}
@@ -47,6 +47,7 @@ final class CivilizationRules {
         state.resources.put("Knowledge", new EvolutionState.Resource(0, 100, false));
         state.resources.put("Money", new EvolutionState.Resource(0, 1000, false));
         state.resources.put("Copper", new EvolutionState.Resource(0, 100, false));
+        state.resources.put("Iron", new EvolutionState.Resource(0, 100, false));
         state.resources.put("human", new EvolutionState.Resource(0, 0, false));
         state.traits.clear();
         state.traits.putAll(traits(state.civilization));
@@ -84,6 +85,7 @@ final class CivilizationRules {
         state.resources.get("Knowledge").capacity = 100 + 500d * state.count("university");
         state.resources.get("Money").capacity = 1000 + 1800d * state.count("bank");
         state.resources.get("Copper").capacity = 100 + (state.resources.get("Copper").visible ? 90d * state.count("shed") : 0);
+        state.resources.get("Iron").capacity = 100 + (state.resources.get("Iron").visible ? 125d * state.count("shed") : 0);
         var civ = state.civilization;
         state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), true);
     }
@@ -115,6 +117,7 @@ final class CivilizationRules {
                 (1 + state.count("lumber_yard") * 0.02) * hunger * multiplier);
         produce(state, "Stone", workers.get("quarry_worker") * (1 + state.count("rock_quarry") * 0.02) * hunger * multiplier);
         produce(state, "Copper", workers.get("miner") * (1 + state.tech("pickaxe") * 0.15) * (1d / 7) * hunger * multiplier);
+        produce(state, "Iron", state.resources.get("Iron").visible ? workers.get("miner") * (1 + state.tech("pickaxe") * 0.15) * 0.25 * hunger * multiplier : 0);
         // The original income block runs after population changes and rounds each fastLoop deposit.
         double income = state.tech("currency") > 0 ? (population.amount - unemployed) * 0.4 : 0;
         if (fed && state.tech("banking") >= 2) income *= 1 + workers.get("banker") * 0.1;
@@ -188,6 +191,9 @@ final class CivilizationRules {
         research(rules, "metal_working", Map.of("mining", 1), "mining", 2, Map.of("Knowledge", 350d), s -> s.structures.put("mine", 0));
         research(rules, "copper_axes", Map.of("axe", 1, "mining", 2), "axe", 2, Map.of("Knowledge", 540d, "Copper", 25d), s -> {});
         research(rules, "copper_pickaxe", Map.of("mining", 2), "pickaxe", 1, Map.of("Knowledge", 675d, "Copper", 25d), s -> {});
+        research(rules, "iron_mining", Map.of("mining", 2), "mining", 3, Map.of("Knowledge", 2500d), s -> s.resources.get("Iron").visible = true);
+        research(rules, "iron_axes", Map.of("axe", 2, "mining", 3), "axe", 3, Map.of("Knowledge", 2700d, "Iron", 250d), s -> {});
+        research(rules, "iron_pickaxe", Map.of("pickaxe", 1, "mining", 3), "pickaxe", 2, Map.of("Knowledge", 3200d, "Iron", 250d), s -> {});
         building(rules, "farm", "agriculture", "city_farm", 3, 50, 1.32, 20, 1.36, 10, 1.36, s -> {});
         building(rules, "lumber_yard", "axe", "city_lumber_yard", 5, 5, 1.85, 6, 1.9, 2, 1.95,
                 s -> s.resources.get("Lumber").capacity += 100);
@@ -201,8 +207,8 @@ final class CivilizationRules {
                     s.resources.get("Lumber").capacity += 300;
                     s.resources.get("Stone").capacity += 300;
                     if (s.resources.get("Copper").visible) s.resources.get("Copper").capacity += 90;
-                }, s -> s.resources.get("Copper").visible ? List.of(TextRef.of("ui_shed_effect", 300), TextRef.of("ui_shed_copper", 90)) :
-                        List.of(TextRef.of("ui_shed_effect", 300)), "shed", null));
+                    if (s.resources.get("Iron").visible) s.resources.get("Iron").capacity += 125;
+                }, CivilizationRules::shedTooltip, "shed", null));
         rules.put("city-university", new Rule("city-university", "science", "city_university",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("science") > 0,
                 s -> Map.of("Money", scaled(900, 1.5, s.count("university")) - 500,
@@ -239,6 +245,14 @@ final class CivilizationRules {
     }
 
     private static double scaled(int base, double scale, int count) { return Math.round(base * Math.pow(scale, count)); }
+
+    private static List<TextRef> shedTooltip(EvolutionState state) {
+        var texts = new java.util.ArrayList<TextRef>();
+        texts.add(TextRef.of("ui_shed_effect", 300));
+        if (state.resources.get("Copper").visible) texts.add(TextRef.of("ui_shed_copper", 90));
+        if (state.resources.get("Iron").visible) texts.add(TextRef.of("ui_shed_iron", 125));
+        return List.copyOf(texts);
+    }
 
     private static void building(Map<String, Rule> rules, String id, String tech, String title,
                                  int moneyAfter, int money, double moneyScale, int lumber, double lumberScale,

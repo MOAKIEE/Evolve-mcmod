@@ -30,11 +30,11 @@ function section(start, end) {
     if (a < 0 || b < 0) throw new Error(`Missing main section ${start}`);
     return source.slice(a, b);
 }
-const resourceIds = ['RNA', 'DNA', 'Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'human'];
+const resourceIds = ['RNA', 'DNA', 'Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron', 'human'];
 const traitIds = ['adaptable', 'wasteful', 'creative', 'diverse'];
 const structureIds = ['basic_housing', 'farm', 'lumber_yard', 'rock_quarry', 'shed', 'university', 'bank', 'mine'];
 const cityIds = ['food', 'lumber', 'stone', ...structureIds];
-const techIds = ['club', 'bone_tools', 'sundial', 'housing', 'agriculture', 'irrigation', 'currency', 'stone_axe', 'mining', 'storage', 'science', 'banking', 'investing', 'metal_working', 'copper_axes', 'copper_pickaxe'];
+const techIds = ['club', 'bone_tools', 'sundial', 'housing', 'agriculture', 'irrigation', 'currency', 'stone_axe', 'mining', 'storage', 'science', 'banking', 'investing', 'metal_working', 'copper_axes', 'copper_pickaxe', 'iron_mining', 'iron_axes', 'iron_pickaxe'];
 const jobIds = ['farmer', 'lumberjack', 'quarry_worker', 'miner', 'professor', 'banker'];
 const fresh = { biome: 'grassland', universe: 'standard', seeded: false, rapidMutation: false,
     massExtinction: 0, novice: 0, master: 0, grandmaster: 0, unbound: 0, obsolete: 0,
@@ -105,6 +105,7 @@ function environment(primary = true, multiplier = 1) {
             ${section('        // Lumber\n', "        let refinery = global.city['metal_refinery']")}
             ${section('        // Stone / Amber\n', "        // Crystal\n")}
             const shrineMetal = { mult: 1 }; const refinery = 0;
+            const iron_smelter = 0; const e_ship = {}; const qs_multiplier = 1;
             ${section('        // Miners\n', '        // Mars Mining\n')}
             const FactoryMoney = 0;
             ${section('        // Income\n', "        if (global.tech['gambling']")}
@@ -116,7 +117,7 @@ function environment(primary = true, multiplier = 1) {
             const lCaps = { professor: 0 };
             ${universityCaps}
             ${bankCaps}
-            for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper']) global.resource[id].max = caps[id];
+            for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron']) global.resource[id].max = caps[id];
             global.civic.professor.max = lCaps.professor;
             global.civic.banker.max = jobScale(global.city.bank?.count || 0);
             global.civic.miner.max = jobScale(global.city.mine?.count || 0);
@@ -180,13 +181,15 @@ function environment(primary = true, multiplier = 1) {
     }
     function save() {
         const data = view();
-        return { schemaVersion: 6, ruleset: 'evolve-1.4.10/copper-1', elapsedTicks: 0, revision: 0, tickRemainder: 0, loopCycle: 0,
+        return { schemaVersion: 7, ruleset: 'evolve-1.4.10/iron-1', elapsedTicks: 0, revision: 0, tickRemainder: 0, loopCycle: 0,
             paused: false, phase: 'PRIMITIVE', randomSeed: g.seed, species: 'human', genus: 'humanoid', progress: 100,
             context: { ...fresh, productionMultiplier: multiplier }, resources: data.resources, structures: data.structures,
             technologies: data.technologies, traits: data.traits, civilization: { primaryGenus: primary ? 'humanoid' : '',
                 unemployed: g.civic.unemployed.workers, workers: data.workers, assigned: data.assigned, capacitiesInitialized } };
     }
-    return { g, act, fast, view, save, assign: (job, delta) => vm.runInContext(`assign('${job}', ${delta})`, context, { timeout: 1000 }) };
+    return { g, act, fast, view, save,
+        mid: () => { vm.runInContext('mid()', context, { timeout: 1000 }); capacitiesInitialized = true; },
+        assign: (job, delta) => vm.runInContext(`assign('${job}', ${delta})`, context, { timeout: 1000 }) };
 }
 function prepare(stage, houses = 0, primary = true, multiplier = 1) {
     const env = environment(primary, multiplier);
@@ -239,6 +242,7 @@ for (const [population, food, seed, multiplier] of [[0, 1, 2, 1], [1, 0, 1, 1], 
 function settlement(options = {}) {
     const { houses = 8, farms = 2, yards = 1, quarries = 1, sheds = 0, universities = 0, science = false, banks = 0, banking = false, investing = false,
         metalWorking = false, mines = 0, copperAxes = false, copperPickaxe = false,
+        ironMining = false, ironAxes = false, ironPickaxe = false,
         irrigated = false, multiplier = 1, currency = true } = options;
     const env = prepare(4, 0, true, multiplier);
     function buy(id) {
@@ -262,6 +266,10 @@ function settlement(options = {}) {
     for (let i = 0; i < mines; i++) buy('city-mine');
     if (copperAxes) buy('tech-copper_axes');
     if (copperPickaxe) buy('tech-copper_pickaxe');
+    if (ironMining) buy('tech-iron_mining');
+    if (ironAxes || ironPickaxe) env.mid();
+    if (ironAxes) buy('tech-iron_axes');
+    if (ironPickaxe) buy('tech-iron_pickaxe');
     for (const resource of Object.values(env.g.resource)) resource.amount = 0;
     return env;
 }
@@ -270,10 +278,13 @@ for (const options of [{}, { farms: 0, yards: 0, quarries: 0 }, { houses: 10, fa
     { science: true }, { sheds: 1, universities: 1 }, { sheds: 2, universities: 2 },
     { banking: true }, { sheds: 1, banks: 1 }, { sheds: 3, universities: 3, banks: 2, investing: true },
     { sheds: 1, universities: 1, metalWorking: true }, { sheds: 1, universities: 1, mines: 1 },
-    { sheds: 2, universities: 2, banks: 1, mines: 3, copperAxes: true, copperPickaxe: true }]) {
+    { sheds: 2, universities: 2, banks: 1, mines: 3, copperAxes: true, copperPickaxe: true },
+    { sheds: 8, universities: 5, banks: 2, mines: 1, copperAxes: true, copperPickaxe: true },
+    { sheds: 8, universities: 5, banks: 2, mines: 1, ironMining: true, copperAxes: true, copperPickaxe: true },
+    { sheds: 15, universities: 7, banks: 5, mines: 3, copperAxes: true, copperPickaxe: true, ironMining: true, ironAxes: true, ironPickaxe: true }]) {
     const env = settlement(options);
     function fund(next) {
-        for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper'])
+        for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron'])
             if (next.g.resource[id].display) next.g.resource[id].amount = Math.max(0, next.g.resource[id].max - 10);
     }
     fund(env);
@@ -303,6 +314,9 @@ for (const options of [
     { population: 8, farmers: 0, lumberjacks: 2, quarriers: 1, professors: 1, miners: 3, sheds: 2, universities: 2, mines: 3, copperAxes: true, copperPickaxe: true, food: 0, seed: 20 },
     { population: 8, farmers: 3, lumberjacks: 1, quarriers: 1, professors: 1, miners: 2, sheds: 2, universities: 2, mines: 2, copperAxes: true, copperPickaxe: true, irrigated: true, multiplier: 1.375, food: 100, seed: 42 },
     { population: 5, farmers: 0, lumberjacks: 0, quarriers: 0, professors: 0, professorTarget: 2, minerTarget: 2, sheds: 2, universities: 2, mines: 2, food: 100, seed: 2 },
+    { population: 8, farmers: 3, lumberjacks: 1, quarriers: 1, professors: 1, miners: 1, sheds: 8, universities: 5, banks: 2, mines: 1, ironMining: true, food: 100, seed: 2 },
+    { population: 8, farmers: 0, lumberjacks: 2, quarriers: 1, professors: 1, miners: 3, sheds: 15, universities: 7, banks: 5, mines: 3, copperAxes: true, copperPickaxe: true, ironMining: true, ironAxes: true, ironPickaxe: true, food: 0, seed: 20 },
+    { population: 8, farmers: 3, lumberjacks: 1, quarriers: 1, professors: 1, miners: 2, sheds: 15, universities: 7, banks: 5, mines: 2, copperAxes: true, copperPickaxe: true, ironMining: true, ironAxes: true, ironPickaxe: true, irrigated: true, multiplier: 1.375, food: 100, seed: 42 },
 ]) {
     const env = settlement(options);
     const { population, farmers, lumberjacks, quarriers, food, seed } = options;
@@ -345,7 +359,7 @@ for (const [job, delta, initial] of [['farmer', 2, 0], ['lumberjack', 100, 0], [
 }
 const result = {
     provenance: files.map(file => ({ file, sha256: crypto.createHash('sha256').update(sources[file]).digest('hex') })),
-    boundary: 'Human/grassland/standard only. Executes original sentience, resource defaults, selected tech/building actions and costs including sheds/universities/banks/mines, investing and copper axes/pickaxes, job add/sub and finite-job refill, farmerValue, food/growth/knowledge/lumber/stone/miner/income blocks and base/storage/university/bank midLoop caps with original bank_vault. Miner, professor and banker capacity is one per matching building; assigned targets survive deaths. Copper starts at 100 capacity; previously built sheds apply only at the next midLoop after copper unlock, new sheds apply immediately. Investing grants a fed-only 10% tax bonus per banker, with original per-fastLoop rounding. Neutral weather, empty geology, tax rate 20, no power, prestige, events, government, default-job switching or other jobs. Host multiplier is supplied explicitly, Math.random uses persisted seededRandom. Host normalizes workforce at the atomic tick boundary, releasing unemployed then jobs in reverse order after deaths; original delayed labor-anomaly repair is outside this fixture.',
+    boundary: 'Human/grassland/standard only. Executes original sentience, resource defaults, selected tech/building actions and costs including sheds/universities/banks/mines, investing, iron mining and copper/iron axes/pickaxes, job add/sub and finite-job refill, farmerValue, food/growth/knowledge/lumber/stone/miner/income blocks and base/storage/university/bank midLoop caps with original bank_vault. Miner, professor and banker capacity is one per matching building; assigned targets survive deaths. Copper and iron start at 100 capacity; previously built sheds apply only at the next midLoop after material unlock, new sheds apply immediately. Upgraded iron-tool setups execute original midLoop during preparation to apply existing sheds before funding the iron costs. Investing grants a fed-only 10% tax bonus per banker, with original per-fastLoop rounding. Neutral weather, empty geology, tax rate 20, no power, smelters, prestige, events, government, default-job switching or other jobs. Host multiplier is supplied explicitly, Math.random uses persisted seededRandom. Host normalizes workforce at the atomic tick boundary, releasing unemployed then jobs in reverse order after deaths; original delayed labor-anomaly repair is outside this fixture.',
     initialization, cases, production, assignments,
 };
 const output = JSON.stringify(result, null, 2) + '\n';

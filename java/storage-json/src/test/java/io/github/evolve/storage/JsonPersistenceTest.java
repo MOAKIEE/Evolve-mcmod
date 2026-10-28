@@ -320,6 +320,48 @@ class JsonPersistenceTest {
         }
     }
 
+    @Test
+    void ironRoundTripKeepsPendingShedCapacityAndRejectsForgedUnlocks() {
+        var base = scienceSave();
+        var resources = new LinkedHashMap<>(base.resources());
+        resources.put("Lumber", new GameSave.ResourceState(0, 2600, true, 0));
+        resources.put("Stone", new GameSave.ResourceState(0, 2600, true, 0));
+        resources.put("Knowledge", new GameSave.ResourceState(0, 2600, true, 0));
+        resources.put("Money", new GameSave.ResourceState(0, 4600, true, 0));
+        resources.put("Copper", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Iron", new GameSave.ResourceState(0, 100, true, 0));
+        var assigned = new LinkedHashMap<>(base.civilization().assigned());
+        assigned.put("miner", 1);
+        var tech = new LinkedHashMap<>(base.technologies());
+        tech.put("mining", 3);
+        tech.put("banking", 1);
+        var save = new GameSave(base.schemaVersion(), base.ruleset(), 0, 0, 0, 0, false, base.phase(), base.randomSeed(),
+                base.species(), base.genus(), base.progress(), base.context(), resources,
+                Map.of("basic_housing", 2, "shed", 8, "university", 5, "bank", 2, "mine", 1, "rock_quarry", 0), tech, base.traits(),
+                new CivilizationState("humanoid", 2, base.civilization().workers(), assigned, false));
+        var original = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        assertEquals(100, restored.exportSave().resources().get("Iron").capacity());
+        original.advanceTicks(23);
+        restored.advanceTicks(23);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(1100, restored.exportSave().resources().get("Iron").capacity());
+        assertEquals(0.25, restored.exportSave().resources().get("Iron").changePerSecond());
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 6),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/copper-1"),
+                root -> root.getAsJsonObject("resources").remove("Iron"),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Iron").addProperty("visible", false),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Iron").addProperty("capacity", 101),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Iron").addProperty("capacity", 1225),
+                root -> root.getAsJsonObject("technologies").addProperty("mining", 2)
+        )) {
+            var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
+    }
+
     private void invalid(Consumer<JsonObject> change) {
         var root = JsonParser.parseString(codec.encode(EvolutionEngine.newGame(2).exportSave())).getAsJsonObject();
         change.accept(root);

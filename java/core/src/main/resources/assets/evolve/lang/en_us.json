@@ -284,6 +284,8 @@
   "evolve.tech_mining_desc": "Learn the basics of mining",
   "evolve.tech_metal_working": "Metal Working",
   "evolve.tech_metal_working_desc": "Learn the basics of smelting and metalworking",
+  "evolve.tech_iron_mining": "Iron Mining",
+  "evolve.tech_iron_mining_desc": "Learn how to mine iron",
   "evolve.tech_storage": "Basic Storage",
   "evolve.tech_storage_desc": "Design a structure to house resources",
   "evolve.tech_currency": "Currency",
@@ -298,8 +300,12 @@
   "evolve.tech_stone_axe_desc": "Create the first axe",
   "evolve.tech_copper_axes": "Bronze Axe",
   "evolve.tech_copper_axes_desc": "Create an axe made from bronze",
+  "evolve.tech_iron_axes": "Iron Axe",
+  "evolve.tech_iron_axes_desc": "Create a sturdy axe made from iron",
   "evolve.tech_copper_pickaxe": "Bronze Pickaxe",
   "evolve.tech_copper_pickaxe_desc": "Create a pickaxe made from bronze",
+  "evolve.tech_iron_pickaxe": "Iron Pickaxe",
+  "evolve.tech_iron_pickaxe_desc": "Create a pickaxe made from iron",
   "evolve.race_prehistoric": "Prehistoric",
   "evolve.race_protoplasm": "Protoplasm",
   "evolve.race_protoplasm_desc": "Your race has yet to evolve into a complex lifeform. Currently you're nothing but protoplasm in the primordial ooze.",
@@ -1016,6 +1022,7 @@
   "evolve.resource_Lumber_name": "Lumber",
   "evolve.resource_Stone_name": "Stone",
   "evolve.resource_Copper_name": "Copper",
+  "evolve.resource_Iron_name": "Iron",
   "evolve.genelab_genus_a": "Genus A",
   "evolve.genelab_genus_b": "Genus B",
   "evolve.genelab_genus_humanoid": "Humanoid",
@@ -1113,5 +1120,6 @@
   "evolve.ui_banker_capacity": "Adds %1$s banker position.",
   "evolve.ui_copper_mine": "Mine",
   "evolve.ui_miner_capacity": "Adds %1$s miner position.",
-  "evolve.ui_shed_copper": "Increases copper storage capacity by %1$s."
+  "evolve.ui_shed_copper": "Increases copper storage capacity by %1$s.",
+  "evolve.ui_shed_iron": "Increases iron storage capacity by %1$s."
 }

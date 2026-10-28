@@ -392,18 +392,17 @@ public final class EvolutionEngine implements GameEngine {
                 save.technologies().getOrDefault("axe", 0) >= 2 && (mining < 2 || mines == 0) ||
                 save.technologies().containsKey("pickaxe") && (mining < 2 || mines == 0))
             throw new IllegalArgumentException("Missing copper mining prerequisite");
+        if (save.technologies().getOrDefault("axe", 0) >= 3 && mining < 3 ||
+                save.technologies().getOrDefault("pickaxe", 0) >= 2 && mining < 3)
+            throw new IllegalArgumentException("Missing iron mining prerequisite");
         if (universities > 0 && !currency) throw new IllegalArgumentException("Missing university currency prerequisite");
         checkResource(save, "Food", save.civilization().capacitiesInitialized() ? 1000 : 250, primitive >= 1);
         checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0) + 300d * sheds, true);
         checkResource(save, "Stone", 200 + 100d * save.structures().getOrDefault("rock_quarry", 0) + 300d * sheds, primitive >= 2);
         checkResource(save, "Knowledge", 100 + 500d * universities, primitive >= 3);
         checkResource(save, "Money", 1000 + 1800d * banks, currency);
-        var copper = save.resources().get("Copper");
-        double copperSheds = (copper.capacity() - 100) / 90;
-        // Old sheds begin storing a newly visible resource at the next midLoop. New sheds add capacity immediately.
-        if (copper.visible() != (mines > 0) || copperSheds != Math.rint(copperSheds) || copperSheds < 0 || copperSheds > sheds ||
-                !copper.visible() && (copper.amount() != 0 || copper.capacity() != 100 || copper.changePerSecond() != 0))
-            throw new IllegalArgumentException("Inconsistent copper capacity or visibility");
+        checkStoredMaterial(save, "Copper", 90, mines > 0, sheds);
+        checkStoredMaterial(save, "Iron", 125, mining >= 3, sheds);
         checkResource(save, "human", houses, houses > 0);
         var population = save.resources().get("human");
         if (!save.civilization().workers().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)) ||
@@ -446,6 +445,15 @@ public final class EvolutionEngine implements GameEngine {
         var resource = save.resources().get(id);
         if (resource.capacity() != capacity || resource.visible() != visible || !visible && resource.amount() != 0)
             throw new IllegalArgumentException("Inconsistent primitive resource: " + id);
+    }
+
+    private static void checkStoredMaterial(GameSave save, String id, int perShed, boolean visible, int sheds) {
+        var resource = save.resources().get(id);
+        double applied = (resource.capacity() - 100) / perShed;
+        // Old sheds apply at the next midLoop after unlock; new sheds apply immediately.
+        if (resource.visible() != visible || applied != Math.rint(applied) || applied < 0 || applied > sheds ||
+                !visible && (resource.amount() != 0 || resource.capacity() != 100 || resource.changePerSecond() != 0))
+            throw new IllegalArgumentException("Inconsistent material capacity or visibility: " + id);
     }
 
     private static void validateContext(EvolutionContext context) {
