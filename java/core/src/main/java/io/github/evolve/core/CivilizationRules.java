@@ -20,7 +20,7 @@ final class CivilizationRules {
     static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank", "mine", "smelter", "cement_plant", "sawmill", "foundry", "garrison", "library", "coal_mine");
     static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "miner", "coal_miner", "craft_Plywood", "craft_Brick", "craft_Wrought_Iron", "cement_worker", "professor", "banker");
     static final Map<String, Integer> TECH_MAX = Map.ofEntries(Map.entry("primitive", 3), Map.entry("housing", 1),
-            Map.entry("agriculture", 2), Map.entry("currency", 1), Map.entry("axe", 3), Map.entry("mining", 4),
+            Map.entry("agriculture", 2), Map.entry("currency", 2), Map.entry("govern", 1), Map.entry("axe", 3), Map.entry("mining", 4),
             Map.entry("storage", 2), Map.entry("science", 4), Map.entry("banking", 2), Map.entry("pickaxe", 2), Map.entry("smelting", 1),
             Map.entry("cement", 1), Map.entry("saw", 1), Map.entry("farm", 1), Map.entry("foundry", 4), Map.entry("military", 1));
     static final Map<String, Rule> ALL = build();
@@ -109,7 +109,7 @@ final class CivilizationRules {
         population.visible = population.capacity > 0;
         var civ = state.civilization;
         state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), true, civ.smelter(), civ.garrison(),
-                state.tech("science") >= 3 ? 0.5 + state.count("library") * 0.01 : civ.professorImpact());
+                state.tech("science") >= 3 ? 0.5 + state.count("library") * 0.01 : civ.professorImpact(), civ.market());
     }
 
     static void fastLoop(EvolutionState state) {
@@ -177,7 +177,7 @@ final class CivilizationRules {
         int soldiers = current.soldiers();
         while (progress >= 100) { progress -= 100; soldiers++; }
         state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(),
-                civ.capacitiesInitialized(), civ.smelter(), new GarrisonState(soldiers, progress, rate), civ.professorImpact());
+                civ.capacitiesInitialized(), civ.smelter(), new GarrisonState(soldiers, progress, rate), civ.professorImpact(), civ.market());
     }
 
     private static void refillJobs(EvolutionState state) {
@@ -193,14 +193,14 @@ final class CivilizationRules {
                 unemployed--;
             }
         }
-        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.assigned(), civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact());
+        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.assigned(), civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact(), civ.market());
     }
 
     private record Smelting(int iron, double woodPerSecond, double coalPerSecond) {}
 
     static void setSmelter(EvolutionState state, SmelterState smelter) {
         var civ = state.civilization;
-        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), civ.capacitiesInitialized(), smelter, civ.garrison(), civ.professorImpact());
+        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), civ.capacitiesInitialized(), smelter, civ.garrison(), civ.professorImpact(), civ.market());
     }
 
     private static Smelting smelt(EvolutionState state) {
@@ -238,7 +238,7 @@ final class CivilizationRules {
         var civ = state.civilization;
         var assigned = new LinkedHashMap<>(civ.assigned());
         CraftingRules.RECIPES.forEach(r -> assigned.put(r.job(), workers.get(r.job())));
-        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact());
+        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact(), civ.market());
     }
 
     private static Map<String, Rule> build() {
@@ -286,6 +286,8 @@ final class CivilizationRules {
         research(rules, "artisans", Map.of("foundry", 1), "foundry", 2, Map.of("Knowledge", 1500d), s -> {});
         research(rules, "apprentices", Map.of("foundry", 2), "foundry", 3, Map.of("Knowledge", 3200d), s -> {});
         research(rules, "carpentry", Map.of("foundry", 3, "saw", 1), "foundry", 4, Map.of("Knowledge", 5200d), s -> {});
+        research(rules, "government", Map.of("currency", 1), "govern", 1, Map.of("Knowledge", 750d), s -> {});
+        research(rules, "market", Map.of("banking", 1, "govern", 1), "currency", 2, Map.of("Knowledge", 1800d), s -> {});
         research(rules, "garrison", Map.of("science", 1, "housing", 1), "military", 1, Map.of("Knowledge", 70d), s -> s.structures.put("garrison", 0));
         research(rules, "library", Map.of("science", 1, "cement", 1), "science", 2, Map.of("Knowledge", 720d), s -> s.structures.put("library", 0));
         research(rules, "thesis", Map.of("science", 2), "science", 3, Map.of("Knowledge", 1125d), s -> {});
@@ -326,7 +328,7 @@ final class CivilizationRules {
                     if (s.tech("science") >= 3) {
                         var civ = s.civilization;
                         s.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(),
-                                civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), 0.5 + s.count("library") * 0.01);
+                                civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), 0.5 + s.count("library") * 0.01, civ.market());
                     }
                 }, s -> s.tech("science") >= 3 ? List.of(TextRef.of("city_max_knowledge", 125), TextRef.of("city_library_effect", 5), TextRef.of("ui_thesis_professor")) :
                         List.of(TextRef.of("city_max_knowledge", 125), TextRef.of("city_library_effect", 5)), "library", null));

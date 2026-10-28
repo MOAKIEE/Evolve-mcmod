@@ -616,6 +616,39 @@ public final class EvolveDesktop {
         panel.smelterButton("Coal", true).doClick();
         panel.refresh();
         render(panel, Path.of("build/preview-coal.png"), 1720);
+        marketSmokeTest(panel);
+    }
+
+    private static void marketSmokeTest(EvolvePanel panel) throws Exception {
+        buyWithStorage(panel, "tech-government");
+        buyWithStorage(panel, "tech-market");
+        buyWithStorage(panel, "city-bank");
+        panel.marketQuantity(100);
+        double before = panel.engine().exportSave().resources().get("Copper").amount();
+        panel.marketButton("Copper", false).doClick();
+        if (panel.engine().exportSave().resources().get("Copper").amount() != before - 100)
+            throw new IllegalStateException("Market sale failed");
+        panel.marketQuantity(25);
+        panel.marketButton("Copper", true).doClick();
+        if (panel.engine().exportSave().resources().get("Copper").amount() != before - 75)
+            throw new IllegalStateException("Market purchase failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Market save failed");
+        var saved = panel.engine().exportSave();
+        panel.marketButton("Copper", true).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Loading changed market prices");
+        panel.marketQuantity(1);
+        panel.marketButton("Copper", true).doClick();
+        if (panel.engine().exportSave().resources().get("Copper").amount() != before - 74)
+            throw new IllegalStateException("Market button used previous session");
+        panel.engine().execute(new GameCommand.Pause(true));
+        panel.refresh();
+        if (panel.marketButton("Copper", true).isEnabled() || panel.marketButton("Copper", false).isEnabled())
+            throw new IllegalStateException("Paused market remained enabled");
+        panel.engine().execute(new GameCommand.Pause(false));
+        panel.refresh();
+        panel.showMarket();
+        render(panel, Path.of("build/preview-market.png"), 1720);
     }
 
     private static void alignMidLoop(EvolvePanel panel) {

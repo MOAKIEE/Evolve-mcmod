@@ -82,6 +82,7 @@ public final class EvolutionEngine implements GameEngine {
             if (state.paused != pause.paused()) { state.paused = pause.paused(); state.revision++; }
             return result(Status.OK, 1);
         }
+        if (command instanceof GameCommand.Trade trade) return MarketRules.trade(state, trade);
         if (command instanceof GameCommand.AssignJob assignment) return assignJob(assignment);
         if (command instanceof GameCommand.AdjustSmelter adjustment) return adjustSmelter(adjustment);
         if (!(command instanceof GameCommand.Action action) || action.actionId() == null ||
@@ -132,7 +133,7 @@ public final class EvolutionEngine implements GameEngine {
             workers.put(command.jobId(), workers.get(command.jobId()) + change);
             var assigned = new LinkedHashMap<>(civ.assigned());
             assigned.put(command.jobId(), workers.get(command.jobId()));
-            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact());
+            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact(), civ.market());
             state.revision += applied;
         }
         return result(applied == Math.abs(command.delta()) ? Status.OK : Status.NO_AVAILABLE_WORKERS, applied);
@@ -211,6 +212,7 @@ public final class EvolutionEngine implements GameEngine {
                 } else {
                     CivilizationRules.fastLoop(state);
                     if (state.loopCycle % 4 == 0) CivilizationRules.updateCapacities(state);
+                    if (state.loopCycle == 0) MarketRules.longLoop(state);
                 }
             }
         }
@@ -308,7 +310,7 @@ public final class EvolutionEngine implements GameEngine {
                         state.civilization.smelter().coal(), state.civilization.smelter().iron(),
                         state.phase == Phase.PRIMITIVE && state.resources.get("Coal").visible, !state.paused && state.count("smelter") > 0),
                 new GameSnapshot.GarrisonView(state.count("garrison") * 2, state.civilization.garrison().soldiers(),
-                        state.civilization.garrison().trainingProgress(), state.civilization.garrison().trainingRate() * 4));
+                        state.civilization.garrison().trainingProgress(), state.civilization.garrison().trainingRate() * 4), MarketRules.offers(state));
     }
 
     @Override
@@ -363,15 +365,25 @@ public final class EvolutionEngine implements GameEngine {
         Objects.requireNonNull(save.civilization(), "civilization");
         Objects.requireNonNull(save.civilization().smelter(), "smelter");
         Objects.requireNonNull(save.civilization().garrison(), "garrison");
+        var market = Objects.requireNonNull(save.civilization().market(), "market");
+        if (!market.prices().keySet().equals(MarketRules.BASE_VALUES.keySet())) throw new IllegalArgumentException("Invalid market resources");
+        for (var entry : market.prices().entrySet()) {
+            boolean active = save.phase() == Phase.PRIMITIVE && save.technologies().getOrDefault("currency", 0) >= 2 &&
+                    save.resources().get(entry.getKey()) != null && save.resources().get(entry.getKey()).visible();
+            if (entry.getValue() == null || !Double.isFinite(entry.getValue()) || entry.getValue() < MarketRules.BASE_VALUES.get(entry.getKey()) / 2 ||
+                    entry.getValue() > 1e15 || !active && !entry.getValue().equals(MarketRules.BASE_VALUES.get(entry.getKey())))
+                throw new IllegalArgumentException("Invalid market price");
+        }
         boolean primitive = save.phase() == Phase.PRIMITIVE;
         if (!save.resources().keySet().equals(primitive ? CivilizationRules.RESOURCES : java.util.Set.of("RNA", "DNA")))
             throw new IllegalArgumentException("Invalid phase resources");
         for (var entry : save.resources().entrySet()) {
             var resource = entry.getValue();
             boolean crafted = primitive && CraftingRules.RESOURCES.contains(entry.getKey());
+            double roundingMargin = primitive && entry.getKey().equals("Money") && save.technologies().getOrDefault("currency", 0) >= 2 ? 0.5 : 0;
             if (!Double.isFinite(resource.amount()) || !Double.isFinite(resource.capacity()) || !Double.isFinite(resource.changePerSecond()) ||
-                    resource.amount() < 0 || resource.amount() > 1e15 || (crafted ? resource.capacity() != -1 :
-                    resource.capacity() < (entry.getKey().equals("human") ? 0 : entry.getKey().equals("Coal") ? 50 : 100) || resource.capacity() > 1e15 || resource.amount() > resource.capacity()))
+                    resource.amount() < -roundingMargin || resource.amount() > 1e15 || (crafted ? resource.capacity() != -1 :
+                    resource.capacity() < (entry.getKey().equals("human") ? 0 : entry.getKey().equals("Coal") ? 50 : 100) || resource.capacity() > 1e15 || resource.amount() > resource.capacity() + roundingMargin))
                 throw new IllegalArgumentException("Invalid resource amount or capacity");
         }
         save.structures().forEach((id, count) -> {
@@ -425,6 +437,10 @@ public final class EvolutionEngine implements GameEngine {
                 throw new IllegalArgumentException("Inconsistent production structure");
         }
         boolean currency = save.technologies().containsKey("currency");
+        boolean government = save.technologies().containsKey("govern");
+        if (government && !currency || save.technologies().getOrDefault("currency", 0) >= 2 &&
+                (!government || !save.technologies().containsKey("banking")))
+            throw new IllegalArgumentException("Missing government or market prerequisite");
         if (currency && !housing || houses > 5 && !currency) throw new IllegalArgumentException("Missing currency prerequisite");
         if (save.technologies().containsKey("storage") && !currency || save.technologies().containsKey("science") && !housing ||
                 save.technologies().containsKey("banking") && !currency)

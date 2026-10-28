@@ -10,7 +10,7 @@ public record GameSnapshot(long revision, long elapsedTicks, Phase phase, boolea
                            String species, String genus, int progress,
                            List<ResourceView> resources, List<ActionView> actions,
                            Map<String, Integer> technologies, Map<String, Double> traits,
-                           List<JobView> jobs, SmelterView smelter, GarrisonView garrison) {
+                           List<JobView> jobs, SmelterView smelter, GarrisonView garrison, List<MarketOffer> market) {
     public enum Phase { EVOLUTION, CIVILIZATION_READY, PRIMITIVE }
 
     public GameSnapshot {
@@ -19,6 +19,7 @@ public record GameSnapshot(long revision, long elapsedTicks, Phase phase, boolea
         technologies = ordered(technologies);
         traits = ordered(traits);
         jobs = List.copyOf(jobs);
+        market = List.copyOf(market);
     }
 
     /** Capacity -1 displays a quantity without a storage progress bar. */
@@ -26,6 +27,9 @@ public record GameSnapshot(long revision, long elapsedTicks, Phase phase, boolea
                                double changePerSecond, boolean visible) {}
 
     public record JobView(String id, TextRef name, int workers, int capacity, boolean defaultJob) {}
+
+    /** Available quantities already account for funds, warehouse room and pause state. */
+    public record MarketOffer(String resourceId, TextRef name, double buyPrice, double sellPrice, int buyAvailable, int sellAvailable) {}
 
     public record SmelterView(int capacity, int wood, int coal, int iron, boolean coalUnlocked, boolean enabled) {}
 

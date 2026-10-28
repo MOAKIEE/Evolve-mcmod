@@ -694,6 +694,55 @@ class JsonPersistenceTest {
     }
 
     @Test
+    void marketRoundTripPreservesRoundingMarginsPricesAndLongLoopPhase() {
+        var root = JsonParser.parseString(codec.encode(scienceSave())).getAsJsonObject();
+        root.getAsJsonObject("technologies").addProperty("govern", 1);
+        root.getAsJsonObject("technologies").addProperty("currency", 2);
+        root.getAsJsonObject("technologies").addProperty("banking", 1);
+        root.getAsJsonObject("structures").addProperty("bank", 0);
+        root.getAsJsonObject("resources").getAsJsonObject("Money").addProperty("amount", 5.6);
+        root.getAsJsonObject("civilization").getAsJsonObject("market").getAsJsonObject("prices").addProperty("Food", 5.6);
+        var game = EvolutionEngine.restore(codec.decode(root.toString()));
+        assertEquals(1, game.execute(new GameCommand.Trade("Food", 1, true)).applied());
+        assertEquals(-0.4, game.exportSave().resources().get("Money").amount(), 1e-12);
+        game.advanceTicks(99);
+        var saved = game.exportSave();
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(saved)));
+        assertEquals(19, restored.exportSave().loopCycle());
+        assertEquals(4, restored.exportSave().tickRemainder());
+        game.advanceTicks(1);
+        restored.advanceTicks(1);
+        assertEquals(game.exportSave(), restored.exportSave());
+        assertEquals(saved.civilization().market(), codec.decode(codec.encode(saved)).civilization().market());
+        root.getAsJsonObject("resources").getAsJsonObject("Money").addProperty("amount", 999.2);
+        root.getAsJsonObject("resources").getAsJsonObject("Food").addProperty("amount", 10);
+        root.getAsJsonObject("civilization").getAsJsonObject("market").getAsJsonObject("prices").addProperty("Food", 3);
+        game = EvolutionEngine.restore(codec.decode(root.toString()));
+        assertEquals(1, game.execute(new GameCommand.Trade("Food", 1, false)).applied());
+        assertEquals(1000.2, game.exportSave().resources().get("Money").amount(), 1e-12);
+        assertEquals(game.exportSave(), codec.decode(codec.encode(game.exportSave())));
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                r -> r.addProperty("schemaVersion", 15),
+                r -> r.addProperty("ruleset", "evolve-1.4.10/coal-1"),
+                r -> r.getAsJsonObject("civilization").remove("market"),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("market").getAsJsonObject("prices").remove("Food"),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("market").getAsJsonObject("prices").addProperty("Money", 1),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("market").getAsJsonObject("prices").addProperty("Food", 2.49),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("market").getAsJsonObject("prices").addProperty("Coal", 21),
+                r -> r.getAsJsonObject("civilization").getAsJsonObject("market").getAsJsonObject("prices").addProperty("Food", "3"),
+                r -> r.getAsJsonObject("resources").getAsJsonObject("Money").addProperty("amount", -0.51),
+                r -> r.getAsJsonObject("resources").getAsJsonObject("Money").addProperty("amount", 1000.51),
+                r -> r.getAsJsonObject("technologies").remove("govern"),
+                r -> r.getAsJsonObject("technologies").remove("banking"),
+                r -> r.getAsJsonObject("technologies").addProperty("currency", 1)
+        )) {
+            var changed = root.deepCopy();
+            change.accept(changed);
+            assertThrows(SaveFormatException.class, () -> codec.decode(changed.toString()));
+        }
+    }
+
+    @Test
     void coalFuelRoundTripPreservesPendingStorageRefillAndExactFuelThreshold() {
         var base = scienceSave();
         var root = JsonParser.parseString(codec.encode(base)).getAsJsonObject();

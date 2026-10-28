@@ -82,6 +82,10 @@ const extras = {
         ui_ready_supported: '%0 are ready to found a settlement.', ui_civilization_actions: 'Settlement',
         ui_primitive: 'Primitive civilization', ui_jobs: 'Jobs', ui_job_workers: '%0: %1',
         ui_no_cost: 'No cost', ui_unlock_resource: 'Unlock the required resource first.',
+        ui_market: 'Market', ui_market_quantity: 'Units per transaction (1–100)',
+        ui_market_buy: 'Buy %0 · $%1', ui_market_sell: 'Sell %0 · $%1',
+        ui_market_partial: 'Trades whole units, limited by funds and available storage. The quote is for the requested quantity.',
+        ui_market_result: 'Traded %0 units.',
         ui_no_workers: 'No available workers.', ui_assign_worker: 'Assign a worker', ui_release_worker: 'Release a worker',
         ui_job_workers_limited: '%0: %1 / %2', ui_shed_effect: 'Increases lumber and stone storage capacity by %0 each.',
         ui_bank_capacity: 'Increases money capacity by %0.', ui_banker_capacity: 'Adds %0 banker position.',
@@ -105,6 +109,10 @@ const extras = {
         ui_thesis_professor: 'Libraries increase each professor\'s base knowledge output by 0.01.',
     },
     zh_cn: {
+        ui_market: '市场', ui_market_quantity: '每次交易数量（1–100）',
+        ui_market_buy: '买入 %0 · $%1', ui_market_sell: '卖出 %0 · $%1',
+        ui_market_partial: '按整数单位交易，受资金和剩余容量限制。报价对应请求数量。',
+        ui_market_result: '已交易 %0 单位。',
         ui_title: '进化', ui_resources: '资源', ui_actions: '演化', ui_pause: '暂停',
         ui_resume: '继续', ui_save: '保存', ui_load: '读取', ui_new: '新游戏',
         ui_progress: '演化进度：%0%', ui_ready: '演化完成：%0（%1）。文明规则尚待迁移。',
@@ -149,7 +157,7 @@ for (const [locale, file] of [['en_us', null], ['zh_cn', 'strings/strings.zh-CN.
     const translated = file ? { ...defaults, ...JSON.parse(read(file)) } : defaults;
     const selected = Object.fromEntries(Object.entries(translated)
         .filter(([key, value]) => typeof value === 'string' &&
-            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money|Copper|Iron|Cement|Furs|Coal|Plywood|Brick|Wrought_Iron)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?|shed_title1|university(?:_effect)?|max_knowledge|bank|smelter(?:_effect1)?|cement_plant|sawmill|foundry|crafted_mats|garrison|coal_mine|library(?:_effect)?)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining|storage|science|banking|investing|metal_working|copper_axes|copper_pickaxe|iron_mining|iron_axes|iron_pickaxe|smelting|cement|iron_saw|farm_house|reinforced_shed|foundry|artisans|garrison|library|thesis|research_grant|apprentices|carpentry|coal_mining)(?:_desc)?$|tech_(foundry|artisans|apprentices|carpentry)_effect$|job_(unemployed|farmer|lumberjack|quarry_worker|miner|coal_miner|professor|banker|cement_worker(?:_desc)?)$)/.test(key))
+            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money|Copper|Iron|Cement|Furs|Coal|Plywood|Brick|Wrought_Iron)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?|shed_title1|university(?:_effect)?|max_knowledge|bank|smelter(?:_effect1)?|cement_plant|sawmill|foundry|crafted_mats|garrison|coal_mine|library(?:_effect)?)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining|storage|science|banking|investing|metal_working|copper_axes|copper_pickaxe|iron_mining|iron_axes|iron_pickaxe|smelting|cement|iron_saw|farm_house|reinforced_shed|foundry|artisans|garrison|library|thesis|research_grant|apprentices|carpentry|coal_mining|government|market)(?:_desc)?$|tech_(foundry|artisans|apprentices|carpentry)_effect$|job_(unemployed|farmer|lumberjack|quarry_worker|miner|coal_miner|professor|banker|cement_worker(?:_desc)?)$)/.test(key))
         .map(([key, value]) => [`evolve.${key}`, plain(value)]));
     for (const [key, value] of Object.entries(extras[locale])) selected[`evolve.${key}`] = value;
     // Minecraft uses 1-based indexed format placeholders; the upstream uses %0, %1, ... .

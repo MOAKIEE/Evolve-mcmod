@@ -17,6 +17,10 @@ import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
+import javax.swing.JSpinner;
+import javax.swing.JTabbedPane;
+import javax.swing.SpinnerNumberModel;
+import javax.swing.plaf.basic.BasicTabbedPaneUI;
 import javax.swing.JTextArea;
 import javax.swing.SwingConstants;
 import java.awt.BorderLayout;
@@ -26,6 +30,7 @@ import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Graphics;
 import java.io.IOException;
 import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
@@ -44,6 +49,12 @@ public final class EvolvePanel extends JPanel {
     private static final Color MUTED = new Color(0xA3B7C9);
     private static final Font BODY = new Font("Dialog", Font.PLAIN, 14);
     private GameEngine engine;
+    private final JTabbedPane actionTabs = new JTabbedPane();
+    private final JPanel marketRows = panel(new GridLayout(0, 1, 0, 8));
+    private final JPanel marketPage = panel(new BorderLayout(0, 12));
+    private final JLabel marketQuantityLabel = label(14, TEXT);
+    private final JSpinner marketQuantity = new JSpinner(new SpinnerNumberModel(10, 1, 100, 1));
+    private final Map<String, MarketRow> marketButtons = new LinkedHashMap<>();
     private final SaveStore store;
     private Localizer localizer;
     private final JLabel title = label(28, TEXT);
@@ -133,7 +144,30 @@ public final class EvolvePanel extends JPanel {
         scroll.setBorder(null);
         scroll.getViewport().setBackground(BACKGROUND);
         scroll.getVerticalScrollBar().setUnitIncrement(18);
-        right.add(scroll, BorderLayout.CENTER);
+        actionTabs.setBackground(SURFACE);
+        actionTabs.setForeground(TEXT);
+        actionTabs.setFont(BODY);
+        actionTabs.setUI(new BasicTabbedPaneUI() {
+            @Override protected void paintTabBackground(Graphics graphics, int placement, int index,
+                                                        int x, int y, int width, int height, boolean selected) {
+                graphics.setColor(selected ? BUTTON : SURFACE);
+                graphics.fillRect(x, y, width, height);
+            }
+        });
+        marketQuantity.setFont(BODY);
+        actionTabs.addTab("", scroll);
+        var marketHeader = panel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        marketHeader.add(marketQuantityLabel);
+        marketHeader.add(marketQuantity);
+        marketQuantity.addChangeListener(event -> refresh());
+        marketPage.add(marketHeader, BorderLayout.NORTH);
+        var marketWrapper = panel(new BorderLayout());
+        marketWrapper.add(marketRows, BorderLayout.NORTH);
+        var marketScroll = new JScrollPane(marketWrapper);
+        marketScroll.setBorder(null);
+        marketScroll.getViewport().setBackground(BACKGROUND);
+        marketPage.add(marketScroll, BorderLayout.CENTER);
+        right.add(actionTabs, BorderLayout.CENTER);
         var bottomControls = panel(new BorderLayout(0, 12));
         bottomControls.add(jobs, BorderLayout.CENTER);
         smelterControls.add(smelterTitle);
@@ -195,6 +229,9 @@ public final class EvolvePanel extends JPanel {
     String uiText(String key) { return localizer.text(key); }
     JButton actionButton(String id) { return actionButtons.get(id); }
     JButton jobButton(String id, boolean recruit) { return recruit ? jobRows.get(id).add : jobRows.get(id).remove; }
+    JButton marketButton(String id, boolean buy) { return buy ? marketButtons.get(id).buy : marketButtons.get(id).sell; }
+    void marketQuantity(int quantity) { marketQuantity.setValue(quantity); }
+    void showMarket() { actionTabs.setSelectedComponent(marketPage); }
     JButton smelterButton(String id, boolean increase) {
         var row = switch (id) { case "Wood" -> woodSmelter; case "Coal" -> coalSmelter; case "Iron" -> ironSmelter; default -> throw new IllegalArgumentException("Unknown smelter allocation"); };
         return increase ? row.add : row.remove;
@@ -232,6 +269,23 @@ public final class EvolvePanel extends JPanel {
 
     void refresh() {
         GameSnapshot snapshot = engine.snapshot();
+        actionTabs.setTitleAt(0, localizer.text(snapshot.phase() == GameSnapshot.Phase.EVOLUTION ? "ui_actions" : "ui_civilization_actions"));
+        marketQuantityLabel.setText(localizer.text("ui_market_quantity"));
+        boolean marketVisible = !snapshot.market().isEmpty();
+        if (marketVisible && actionTabs.indexOfComponent(marketPage) < 0) actionTabs.addTab(localizer.text("ui_market"), marketPage);
+        if (!marketVisible && actionTabs.indexOfComponent(marketPage) >= 0) actionTabs.remove(marketPage);
+        if (marketVisible) actionTabs.setTitleAt(actionTabs.indexOfComponent(marketPage), localizer.text("ui_market"));
+        var offerIds = snapshot.market().stream().map(GameSnapshot.MarketOffer::resourceId).toList();
+        if (!offerIds.equals(marketButtons.keySet().stream().toList())) {
+            marketRows.removeAll();
+            marketButtons.clear();
+            for (var offer : snapshot.market()) {
+                var row = new MarketRow(offer.resourceId());
+                marketButtons.put(offer.resourceId(), row);
+                marketRows.add(row.panel);
+            }
+        }
+        snapshot.market().forEach(offer -> marketButtons.get(offer.resourceId()).update(offer));
         title.setText(localizer.text("ui_title"));
         subtitle.setText(localizer.text("ui_subtitle"));
         resourceTitle.setText(localizer.text("ui_resources"));
@@ -386,6 +440,37 @@ public final class EvolvePanel extends JPanel {
             remove.getAccessibleContext().setAccessibleName(localizer.text("ui_release_worker") + ": " + localizer.text(job.name()));
             add.setEnabled(!paused && available > 0 && (job.capacity() == -1 || job.workers() < job.capacity()));
             remove.setEnabled(!paused && job.workers() > 0);
+        }
+    }
+
+    private final class MarketRow {
+        final JPanel panel = EvolvePanel.panel(new GridLayout(1, 3, 8, 0));
+        final JLabel name = label(14, TEXT);
+        final JButton buy = button();
+        final JButton sell = button();
+        MarketRow(String id) {
+            panel.setBackground(SURFACE);
+            panel.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 8));
+            panel.add(name); panel.add(buy); panel.add(sell);
+            buy.addActionListener(event -> trade(id, true));
+            sell.addActionListener(event -> trade(id, false));
+        }
+        private void trade(String id, boolean buy) {
+            var result = engine.execute(new GameCommand.Trade(id, (int) marketQuantity.getValue(), buy));
+            status.setText(localizer.text("ui_market_result", result.applied()));
+            refresh();
+        }
+        void update(GameSnapshot.MarketOffer offer) {
+            int quantity = (int) marketQuantity.getValue();
+            name.setText(localizer.text(offer.name()));
+            buy.setText(localizer.text("ui_market_buy", quantity, Math.round(offer.buyPrice() * quantity)));
+            sell.setText(localizer.text("ui_market_sell", quantity, Math.round(offer.sellPrice() * quantity)));
+            buy.setEnabled(offer.buyAvailable() > 0);
+            sell.setEnabled(offer.sellAvailable() > 0);
+            String hint = localizer.text("ui_market_partial");
+            buy.setToolTipText(hint); sell.setToolTipText(hint);
+            buy.getAccessibleContext().setAccessibleName(buy.getText() + ": " + name.getText());
+            sell.getAccessibleContext().setAccessibleName(sell.getText() + ": " + name.getText());
         }
     }
 

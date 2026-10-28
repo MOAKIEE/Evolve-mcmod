@@ -87,6 +87,18 @@ class CivilizationParityTest {
                 compare(test.getAsJsonObject("expected"), game);
             }));
         }
+        for (var item : fixtures.getAsJsonArray("marketTrades")) {
+            var test = item.getAsJsonObject();
+            tests.add(DynamicTest.dynamicTest("market/" + test.get("id") + "/" + tests.size(), () -> {
+                var game = engine(test);
+                int quantity = test.get("quantity").getAsInt();
+                var result = game.execute(new GameCommand.Trade(test.get("id").getAsString(), quantity, test.get("buy").getAsBoolean()));
+                assertEquals(test.get("applied").getAsInt(), result.applied());
+                assertEquals(result.applied() == quantity, result.status() == CommandResult.Status.OK);
+                compare(test.getAsJsonObject("expected"), game);
+                assertEquals(game.exportSave(), EvolutionEngine.restore(game.exportSave()).exportSave());
+            }));
+        }
         return tests.stream();
     }
 
@@ -114,6 +126,7 @@ class CivilizationParityTest {
         assertEquals(GSON.fromJson(civilization.get("smelter"), SmelterState.class), save.civilization().smelter());
         assertEquals(GSON.fromJson(civilization.get("garrison"), GarrisonState.class), save.civilization().garrison());
         assertEquals(civilization.get("professorImpact").getAsDouble(), save.civilization().professorImpact(), 1e-12);
+        assertEquals(GSON.fromJson(civilization.get("market"), MarketState.class), save.civilization().market());
         if (expected.has("available")) availability(expected.getAsJsonArray("available"), game);
     }
 
