@@ -10,7 +10,7 @@ import static io.github.evolve.core.CommandResult.Status;
 import static io.github.evolve.core.GameSnapshot.Phase;
 
 /**
- * Single-owner, deterministic evolution session. One Minecraft tick is 50 ms;
+ * Single-owner, deterministic game session. One Minecraft tick is 50 ms;
  * the upstream fast/mid/long cadence is 5/20/100 ticks. No background tasks,
  * wall clock, file access, client API, static mutable game or script engine.
  */
@@ -71,6 +71,7 @@ public final class EvolutionEngine implements GameEngine {
         state.structures.putAll(save.structures());
         state.technologies.putAll(save.technologies());
         state.traits.putAll(save.traits());
+        state.civilization = save.civilization();
         return new EvolutionEngine(state);
     }
 
@@ -84,8 +85,8 @@ public final class EvolutionEngine implements GameEngine {
         if (!(command instanceof GameCommand.Action action) || action.actionId() == null ||
                 action.repetitions() < 1 || action.repetitions() > MAX_REPETITIONS)
             return result(Status.INVALID_COMMAND, 0);
-        if (state.phase != Phase.EVOLUTION) return result(Status.PHASE_COMPLETE, 0);
         if (state.paused) return result(Status.PAUSED, 0);
+        if (state.phase != Phase.EVOLUTION) return executeCivilization(action);
         var rule = EvolutionRules.ALL.get(action.actionId());
         if (rule == null) return result(Status.UNKNOWN_ACTION, 0);
 
@@ -113,12 +114,35 @@ public final class EvolutionEngine implements GameEngine {
         return result(applied == action.repetitions() ? Status.OK : status, applied);
     }
 
+    private CommandResult executeCivilization(GameCommand.Action action) {
+        var rule = CivilizationRules.ALL.get(action.actionId());
+        if (rule == null) return result(state.phase == Phase.CIVILIZATION_READY ? Status.PHASE_COMPLETE : Status.UNKNOWN_ACTION, 0);
+        int applied = 0;
+        Status status = Status.OK;
+        for (int i = 0; i < action.repetitions(); i++) {
+            if (!rule.visible().test(state)) { status = Status.LOCKED; break; }
+            if (rule.structure() != null && state.count(rule.structure()) >= 1_000_000) { status = Status.LOCKED; break; }
+            if (rule.gathers() != null && state.amount(rule.gathers()) >= state.resources.get(rule.gathers()).capacity) {
+                status = Status.RESOURCE_FULL;
+                break;
+            }
+            var costs = rule.costs().apply(state);
+            if (!fitsStorage(costs)) { status = Status.STORAGE_TOO_SMALL; break; }
+            if (!affordable(costs)) { status = Status.UNAFFORDABLE; break; }
+            costs.forEach((id, cost) -> state.resources.get(id).amount -= cost);
+            rule.effect().accept(state);
+            state.revision++;
+            applied++;
+        }
+        return result(applied == action.repetitions() ? Status.OK : status, applied);
+    }
+
     @Override
     public void advanceTicks(int ticks) {
         checkOwner();
         if (ticks < 0 || ticks > MAX_TICKS_PER_CALL)
             throw new IllegalArgumentException("ticks must be in [0, " + MAX_TICKS_PER_CALL + "]");
-        if (state.paused || state.phase != Phase.EVOLUTION || ticks == 0) return;
+        if (state.paused || state.phase == Phase.CIVILIZATION_READY || ticks == 0) return;
         if (state.elapsedTicks > Long.MAX_VALUE - ticks || state.revision > Long.MAX_VALUE - ticks)
             throw new IllegalStateException("Session time exhausted");
         for (int i = 0; i < ticks; i++) {
@@ -127,8 +151,10 @@ public final class EvolutionEngine implements GameEngine {
             if (++state.tickRemainder == 5) {
                 state.tickRemainder = 0;
                 state.loopCycle = (state.loopCycle + 1) % 20;
-                fastLoop();
-                if (state.loopCycle % 4 == 0) updateCapacities();
+                if (state.phase == Phase.EVOLUTION) {
+                    fastLoop();
+                    if (state.loopCycle % 4 == 0) updateCapacities();
+                } else CivilizationRules.fastLoop(state);
             }
         }
     }
@@ -187,7 +213,7 @@ public final class EvolutionEngine implements GameEngine {
         checkOwner();
         var resources = state.resources.entrySet().stream().map(entry -> {
             var resource = entry.getValue();
-            return new GameSnapshot.ResourceView(entry.getKey(), TextRef.of("resource_" + entry.getKey() + "_name"),
+            return new GameSnapshot.ResourceView(entry.getKey(), TextRef.of(entry.getKey().equals("human") ? "race_human" : "resource_" + entry.getKey() + "_name"),
                     resource.amount, resource.capacity, resource.rate, resource.visible);
         }).toList();
         var actions = new ArrayList<GameSnapshot.ActionView>();
@@ -202,9 +228,21 @@ public final class EvolutionEngine implements GameEngine {
                         rule.tooltip().apply(state), state.count(shortId), costs,
                         !state.paused && !full && !countLimit && affordable(costs), fitsStorage(costs)));
             }
+        } else {
+            for (var rule : CivilizationRules.ALL.values()) {
+                if (!rule.visible().test(state)) continue;
+                var costs = rule.costs().apply(state);
+                boolean full = rule.gathers() != null && state.amount(rule.gathers()) >= state.resources.get(rule.gathers()).capacity;
+                int count = rule.structure() == null ? 0 : state.count(rule.structure());
+                actions.add(new GameSnapshot.ActionView(rule.id(), rule.category(), TextRef.of(rule.title()),
+                        rule.tooltip().apply(state), count, costs,
+                        !state.paused && !full && count < 1_000_000 && affordable(costs), fitsStorage(costs)));
+            }
         }
+        List<GameSnapshot.JobView> jobs = state.phase == Phase.PRIMITIVE ?
+                List.of(new GameSnapshot.JobView("unemployed", TextRef.of("job_unemployed"), state.civilization.unemployed(), -1, true)) : List.of();
         return new GameSnapshot(state.revision, state.elapsedTicks, state.phase, state.paused,
-                state.species, state.genus, state.progress, resources, actions, state.technologies, state.traits);
+                state.species, state.genus, state.progress, resources, actions, state.technologies, state.traits, jobs);
     }
 
     @Override
@@ -216,7 +254,7 @@ public final class EvolutionEngine implements GameEngine {
         return new GameSave(GameSave.SCHEMA_VERSION, GameSave.RULESET, state.elapsedTicks, state.revision,
                 state.tickRemainder, state.loopCycle, state.paused, state.phase, state.randomSeed,
                 state.species, state.genus, state.progress, state.context,
-                resources, state.structures, state.technologies, state.traits);
+                resources, state.structures, state.technologies, state.traits, state.civilization);
     }
 
     private boolean affordable(Map<String, Double> costs) {
@@ -224,7 +262,8 @@ public final class EvolutionEngine implements GameEngine {
     }
 
     private boolean fitsStorage(Map<String, Double> costs) {
-        return costs.entrySet().stream().allMatch(e -> state.resources.get(e.getKey()).capacity >= e.getValue());
+        return costs.entrySet().stream().allMatch(e -> state.resources.get(e.getKey()).visible &&
+                state.resources.get(e.getKey()).capacity >= e.getValue());
     }
 
     private CommandResult result(Status status, int applied) { return new CommandResult(status, applied, state.revision); }
@@ -250,32 +289,78 @@ public final class EvolutionEngine implements GameEngine {
         if (save.elapsedTicks() % 5 != save.tickRemainder() || (save.elapsedTicks() / 5) % 20 != save.loopCycle())
             throw new IllegalArgumentException("Inconsistent loop phase");
         validateContext(Objects.requireNonNull(save.context(), "context"));
-        if (!save.resources().keySet().equals(java.util.Set.of("RNA", "DNA")))
-            throw new IllegalArgumentException("Invalid evolution resources");
-        for (var resource : save.resources().values()) {
+        Objects.requireNonNull(save.civilization(), "civilization");
+        boolean primitive = save.phase() == Phase.PRIMITIVE;
+        if (!save.resources().keySet().equals(primitive ? CivilizationRules.RESOURCES : java.util.Set.of("RNA", "DNA")))
+            throw new IllegalArgumentException("Invalid phase resources");
+        for (var entry : save.resources().entrySet()) {
+            var resource = entry.getValue();
             if (!Double.isFinite(resource.amount()) || !Double.isFinite(resource.capacity()) || !Double.isFinite(resource.changePerSecond()) ||
-                    resource.amount() < 0 || resource.capacity() < 100 || resource.capacity() > 1e15 || resource.amount() > resource.capacity())
+                    resource.amount() < 0 || resource.capacity() < (entry.getKey().equals("human") ? 0 : 100) ||
+                    resource.capacity() > 1e15 || resource.amount() > resource.capacity())
                 throw new IllegalArgumentException("Invalid resource amount or capacity");
         }
         save.structures().forEach((id, count) -> {
-            if (!EvolutionRules.STRUCTURES.contains(id) || count < 0 || count > 1_000_000)
-                throw new IllegalArgumentException("Invalid evolution structure");
+            if (!(primitive ? CivilizationRules.STRUCTURES : EvolutionRules.STRUCTURES).contains(id) || count < 0 || count > 1_000_000)
+                throw new IllegalArgumentException("Invalid phase structure");
         });
         save.technologies().forEach((id, rank) -> {
-            if (!EvolutionRules.TECHS.contains(id) || rank < 1 || rank > 8)
-                throw new IllegalArgumentException("Invalid evolution technology");
+            boolean valid = primitive ? (id.equals("primitive") && rank >= 1 && rank <= 3 || id.equals("housing") && rank == 1) :
+                    EvolutionRules.TECHS.contains(id) && rank >= 1 && rank <= 8;
+            if (!valid) throw new IllegalArgumentException("Invalid phase technology");
         });
         if (save.phase() == Phase.EVOLUTION) {
             if (!save.species().equals("protoplasm") || !save.genus().equals("organism") || !save.traits().isEmpty() ||
-                    !save.resources().get("RNA").visible()) throw new IllegalArgumentException("Invalid evolution phase");
+                    !save.resources().get("RNA").visible() || !save.civilization().equals(CivilizationState.empty()))
+                throw new IllegalArgumentException("Invalid evolution phase");
         } else if (save.phase() == Phase.CIVILIZATION_READY) {
             var species = SpeciesCatalog.all().get(save.species());
             if (species == null || !species.genus().equals(save.genus()) || save.progress() != 100 ||
                     !save.structures().isEmpty() || !save.technologies().isEmpty() ||
                     save.resources().values().stream().anyMatch(GameSave.ResourceState::visible) ||
-                    !SpeciesCatalog.startingTraits(save.species()).equals(save.traits()))
+                    !SpeciesCatalog.startingTraits(save.species()).equals(save.traits()) || save.civilization().unemployed() != 0)
                 throw new IllegalArgumentException("Invalid civilization handoff");
+            validatePrimaryGenus(save);
+        } else if (primitive) {
+            validatePrimaryGenus(save);
+            validateCivilization(save);
         } else throw new IllegalArgumentException("Missing game phase");
+    }
+
+    private static void validatePrimaryGenus(GameSave save) {
+        String primary = save.civilization().primaryGenus();
+        if (primary == null || !primary.isEmpty() && !primary.equals(save.genus()))
+            throw new IllegalArgumentException("Invalid primary genus");
+    }
+
+    private static void validateCivilization(GameSave save) {
+        if (!CivilizationRules.supported(save.species(), save.context()) || !save.genus().equals("humanoid") ||
+                save.progress() != 100 || !save.traits().equals(CivilizationRules.traits(save.civilization())))
+            throw new IllegalArgumentException("Unsupported primitive civilization");
+        int primitive = save.technologies().getOrDefault("primitive", 0);
+        boolean housing = save.technologies().containsKey("housing");
+        int houses = save.structures().getOrDefault("basic_housing", 0);
+        if (housing && primitive != 3 || save.structures().containsKey("basic_housing") != housing || houses > 5)
+            throw new IllegalArgumentException("Inconsistent primitive structures");
+        checkResource(save, "Food", 250, primitive >= 1);
+        checkResource(save, "Lumber", 200, true);
+        checkResource(save, "Stone", 200, primitive >= 2);
+        checkResource(save, "Knowledge", 100, primitive >= 3);
+        checkResource(save, "Money", 1000, false);
+        checkResource(save, "human", houses, houses > 0);
+        var population = save.resources().get("human");
+        if (population.amount() != Math.rint(population.amount()) || save.civilization().unemployed() != population.amount())
+            throw new IllegalArgumentException("Inconsistent primitive population and jobs");
+        for (String id : List.of("RNA", "DNA")) {
+            var resource = save.resources().get(id);
+            if (resource.visible() || resource.changePerSecond() != 0) throw new IllegalArgumentException("Active evolution resource");
+        }
+    }
+
+    private static void checkResource(GameSave save, String id, double capacity, boolean visible) {
+        var resource = save.resources().get(id);
+        if (resource.capacity() != capacity || resource.visible() != visible || !visible && resource.amount() != 0)
+            throw new IllegalArgumentException("Inconsistent primitive resource: " + id);
     }
 
     private static void validateContext(EvolutionContext context) {

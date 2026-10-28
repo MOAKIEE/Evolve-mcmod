@@ -6,7 +6,8 @@ import java.util.Set;
  * Inputs supplied by a future world/prestige system, not client commands.
  * Perk ranks are already limited by their corresponding upstream achievements.
  * productionMultiplier represents the upstream global multiplier, whose prestige
- * calculation is outside this evolution module.
+ * calculation is outside this module. It also supplies primitive sundial
+ * production; civilization morale/prestige multipliers are not calculated here.
  */
 public record EvolutionContext(String biome, String universe, boolean seeded,
                                boolean rapidMutation, int massExtinction,

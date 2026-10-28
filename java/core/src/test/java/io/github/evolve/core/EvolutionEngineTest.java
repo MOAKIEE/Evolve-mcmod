@@ -88,13 +88,18 @@ class EvolutionEngineTest {
         assertEquals(GameSnapshot.Phase.CIVILIZATION_READY, game.snapshot().phase());
         assertEquals("humanoid", game.snapshot().genus());
         assertEquals(100, game.snapshot().progress());
-        assertTrue(game.snapshot().actions().isEmpty());
+        assertEquals(game.snapshot().species().equals("human") ? 1 : 0, game.snapshot().actions().size());
         assertEquals(SpeciesCatalog.startingTraits(game.snapshot().species()), game.snapshot().traits());
         assertEquals(game.exportSave(), EvolutionEngine.restore(game.exportSave()).exportSave());
         assertEquals(Status.PHASE_COMPLETE, game.execute(new GameCommand.Action("evolution-rna")).status());
         var handoff = game.exportSave();
         game.advanceTicks(100);
         assertEquals(handoff, game.exportSave());
+        if (game.snapshot().species().equals("human")) {
+            assertEquals("humanoid", game.exportSave().civilization().primaryGenus());
+            assertEquals(Status.OK, game.execute(new GameCommand.Action("civilization-start")).status());
+            assertEquals(GameSnapshot.Phase.PRIMITIVE, game.snapshot().phase());
+        }
     }
 
     static void buildCell(EvolutionEngine game) {

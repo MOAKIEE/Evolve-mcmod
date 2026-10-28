@@ -16,6 +16,12 @@ tasks.register('verifyUpstreamFixtures', Exec) {
     commandLine 'node', 'tools/reference-fixtures.cjs', '--check'
 }
 
+tasks.register('verifyCivilizationFixtures', Exec) {
+    group = 'verification'
+    description = 'Checks primitive civilization fixtures against original source functions.'
+    commandLine 'node', 'tools/civilization-fixtures.cjs', '--check'
+}
+
 subprojects {
     apply plugin: 'java-library'
     java {

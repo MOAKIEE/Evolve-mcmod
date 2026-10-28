@@ -4,6 +4,10 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import io.github.evolve.core.EvolutionEngine;
 import io.github.evolve.core.GameCommand;
+import io.github.evolve.core.GameSave;
+import io.github.evolve.core.GameSnapshot;
+import io.github.evolve.core.CivilizationState;
+import io.github.evolve.core.SpeciesCatalog;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -11,6 +15,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.function.Consumer;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,7 +42,7 @@ class JsonPersistenceTest {
 
     @Test
     void rejectsUnknownMissingWrongTypeAndNonIntegralFields() {
-        invalid(root -> root.addProperty("schemaVersion", 2));
+        invalid(root -> root.addProperty("schemaVersion", 1));
         invalid(root -> root.addProperty("ruleset", "unknown"));
         invalid(root -> root.remove("resources"));
         invalid(root -> root.addProperty("extra", true));
@@ -54,7 +60,7 @@ class JsonPersistenceTest {
     @Test
     void rejectsDuplicateFieldsGarbageDeepTreesAndTruncatedInput() {
         String valid = codec.encode(EvolutionEngine.newGame(2).exportSave());
-        assertThrows(SaveFormatException.class, () -> codec.decode(valid.replaceFirst("\\{", "{\"schemaVersion\":1,")));
+        assertThrows(SaveFormatException.class, () -> codec.decode(valid.replaceFirst("\\{", "{\"schemaVersion\":2,")));
         assertThrows(SaveFormatException.class, () -> codec.decode(valid + "false"));
         assertThrows(SaveFormatException.class, () -> codec.decode(valid.substring(0, valid.length() / 2)));
         assertThrows(SaveFormatException.class, () -> codec.decode("[".repeat(32) + "0" + "]".repeat(32)));
@@ -62,6 +68,70 @@ class JsonPersistenceTest {
         assertThrows(SaveFormatException.class, () -> codec.decode(valid.replace("100.0", "NaN")));
         assertThrows(SaveFormatException.class, () -> codec.decode(valid.replace("100.0", "1e999")));
         assertThrows(SaveFormatException.class, () -> codec.decode("[browser LZString save]"));
+    }
+
+    @Test
+    void primitiveRoundTripPreservesPopulationJobsTraitsAndRandomDraws() {
+        var game = primitive();
+        game.execute(new GameCommand.Action("city-lumber", 5));
+        game.execute(new GameCommand.Action("tech-club"));
+        game.execute(new GameCommand.Action("city-food", 10));
+        game.execute(new GameCommand.Action("tech-bone_tools"));
+        game.execute(new GameCommand.Action("city-lumber", 18));
+        game.execute(new GameCommand.Action("city-stone", 10));
+        game.execute(new GameCommand.Action("tech-sundial"));
+        game.advanceTicks(203);
+        game.execute(new GameCommand.Action("tech-housing"));
+        game.execute(new GameCommand.Action("city-basic_housing"));
+        game.execute(new GameCommand.Action("city-food", 100));
+        game.advanceTicks(5);
+        assertEquals(1, game.exportSave().civilization().unemployed());
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(game.exportSave())));
+        assertEquals(game.snapshot(), restored.snapshot());
+        game.advanceTicks(997);
+        restored.advanceTicks(997);
+        assertEquals(game.exportSave(), restored.exportSave());
+    }
+
+    @Test
+    void rejectsOldSchemaAndInconsistentCivilizationStates() {
+        var old = JsonParser.parseString(codec.encode(EvolutionEngine.newGame(2).exportSave())).getAsJsonObject();
+        old.addProperty("schemaVersion", 1);
+        old.addProperty("ruleset", "evolve-1.4.10/evolution-1");
+        old.remove("civilization");
+        assertThrows(SaveFormatException.class, () -> codec.decode(old.toString()));
+        invalidCivilization(root -> root.remove("civilization"));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("unemployed", 1));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("unemployed", 0.5));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("unemployed", 4_294_967_296L));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("primaryGenus", "plant"));
+        invalidCivilization(root -> root.getAsJsonObject("context").addProperty("universe", "evil"));
+        invalidCivilization(root -> root.getAsJsonObject("resources").remove("Food"));
+        invalidCivilization(root -> root.getAsJsonObject("resources").getAsJsonObject("human").addProperty("amount", 0.5));
+        invalidCivilization(root -> root.getAsJsonObject("resources").getAsJsonObject("Food").addProperty("capacity", 500));
+        invalidCivilization(root -> root.getAsJsonObject("resources").getAsJsonObject("Food").addProperty("amount", 10));
+        invalidCivilization(root -> root.getAsJsonObject("resources").getAsJsonObject("RNA").addProperty("visible", true));
+        invalidCivilization(root -> root.getAsJsonObject("traits").addProperty("creative", 2));
+        invalidCivilization(root -> root.getAsJsonObject("technologies").addProperty("housing", 1));
+        invalidCivilization(root -> root.getAsJsonObject("technologies").addProperty("currency", 1));
+        invalidCivilization(root -> root.getAsJsonObject("structures").addProperty("basic_housing", 1));
+    }
+
+    private void invalidCivilization(Consumer<JsonObject> change) {
+        var root = JsonParser.parseString(codec.encode(primitive().exportSave())).getAsJsonObject();
+        change.accept(root);
+        assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+    }
+
+    private static EvolutionEngine primitive() {
+        var fresh = EvolutionEngine.newGame(2).exportSave();
+        var resources = new LinkedHashMap<String, GameSave.ResourceState>();
+        fresh.resources().forEach((id, r) -> resources.put(id, new GameSave.ResourceState(r.amount(), r.capacity(), false, 0)));
+        var game = EvolutionEngine.restore(new GameSave(GameSave.SCHEMA_VERSION, GameSave.RULESET, 0, 0, 0, 0, false,
+                GameSnapshot.Phase.CIVILIZATION_READY, 2, "human", "humanoid", 100, fresh.context(),
+                resources, Map.of(), Map.of(), SpeciesCatalog.startingTraits("human"), new CivilizationState("humanoid", 0)));
+        game.execute(new GameCommand.Action("civilization-start"));
+        return game;
     }
 
     @Test

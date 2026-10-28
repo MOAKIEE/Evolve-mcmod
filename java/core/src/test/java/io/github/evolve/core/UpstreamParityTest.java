@@ -70,7 +70,7 @@ class UpstreamParityTest {
         return EvolutionEngine.restore(new GameSave(GameSave.SCHEMA_VERSION, GameSave.RULESET, 0, 0, 0, 0, false,
                 GameSnapshot.Phase.EVOLUTION, 2, "protoplasm", "organism", test.get("progress").getAsInt(),
                 GSON.fromJson(test.get("context"), EvolutionContext.class), resources,
-                GSON.fromJson(test.get("structures"), COUNTS), GSON.fromJson(test.get("technologies"), COUNTS), Map.of()));
+                GSON.fromJson(test.get("structures"), COUNTS), GSON.fromJson(test.get("technologies"), COUNTS), Map.of(), CivilizationState.empty()));
     }
 
     private static void compare(JsonObject expected, GameSave actual) {

@@ -15,6 +15,7 @@ final class EvolutionState {
     String species = "protoplasm";
     String genus = "organism";
     int progress;
+    CivilizationState civilization = CivilizationState.empty();
     final EvolutionContext context;
     final Map<String, Resource> resources = new LinkedHashMap<>();
     final Map<String, Integer> structures = new LinkedHashMap<>();
@@ -32,14 +33,24 @@ final class EvolutionState {
     void addStructure(String id) { structures.put(id, count(id) + 1); }
 
     int nextInt(int bound) {
+        nextSeed();
+        return (int) ((long) randomSeed * bound / 233280);
+    }
+
+    int nextRoll(double bound) {
+        nextSeed();
+        return (int) Math.floor(randomSeed / 233280d * bound);
+    }
+
+    private void nextSeed() {
         // Multiplication intentionally uses long to match JS's exact Number arithmetic here.
         randomSeed = (int) (((long) randomSeed * 9301 + 49297) % 233280);
-        return (int) ((long) randomSeed * bound / 233280);
     }
 
     void becomeSentient(String id) {
         species = id;
         genus = SpeciesCatalog.all().get(id).genus();
+        civilization = new CivilizationState(tech("evo_" + genus) >= 2 ? genus : "", 0);
         traits.putAll(SpeciesCatalog.startingTraits(id));
         structures.clear();
         technologies.keySet().removeIf(key -> key.equals("evo") || key.startsWith("evo_"));

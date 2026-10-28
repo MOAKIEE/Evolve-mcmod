@@ -77,6 +77,11 @@ const extras = {
         ui_count: 'Owned: %0', ui_description: 'Description', ui_effect: 'Effect',
         ui_subtitle: 'From primordial life to a civilization', ui_close: 'Save before closing?',
         ui_save_missing: 'No saved game was found.', ui_language: 'Language',
+        ui_start_civilization: 'Found a settlement', ui_start_civilization_desc: 'Begin gathering resources and researching technology.',
+        ui_gather_stone: 'Gather stone', ui_gather_stone_desc: 'Gather %0 stone.',
+        ui_ready_supported: '%0 are ready to found a settlement.', ui_civilization_actions: 'Settlement',
+        ui_primitive: 'Primitive civilization', ui_jobs: 'Jobs', ui_job_workers: '%0: %1',
+        ui_no_cost: 'No cost', ui_unlock_resource: 'Unlock the required resource first.',
     },
     zh_cn: {
         ui_title: '进化', ui_resources: '资源', ui_actions: '演化', ui_pause: '暂停',
@@ -90,6 +95,11 @@ const extras = {
         ui_count: '数量：%0', ui_description: '说明', ui_effect: '效果',
         ui_subtitle: '从原始生命走向文明', ui_close: '关闭前保存游戏？',
         ui_save_missing: '尚未找到存档。', ui_language: '语言',
+        ui_start_civilization: '建立聚落', ui_start_civilization_desc: '开始采集资源与研究技术。',
+        ui_gather_stone: '采集石头', ui_gather_stone_desc: '采集 %0 石头。',
+        ui_ready_supported: '%0已准备好建立聚落。', ui_civilization_actions: '聚落',
+        ui_primitive: '原始文明', ui_jobs: '工作', ui_job_workers: '%0：%1',
+        ui_no_cost: '无消耗', ui_unlock_resource: '请先解锁所需资源。',
     },
 };
 const defaults = JSON.parse(read('strings/strings.json'));
@@ -97,7 +107,7 @@ for (const [locale, file] of [['en_us', null], ['zh_cn', 'strings/strings.zh-CN.
     const translated = file ? { ...defaults, ...JSON.parse(read(file)) } : defaults;
     const selected = Object.fromEntries(Object.entries(translated)
         .filter(([key, value]) => typeof value === 'string' &&
-            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA)_name$)/.test(key))
+            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc))$|tech_(club|bone_tools|sundial|housing)(?:_desc)?$|job_unemployed$)/.test(key))
         .map(([key, value]) => [`evolve.${key}`, plain(value)]));
     for (const [key, value] of Object.entries(extras[locale])) selected[`evolve.${key}`] = value;
     // Minecraft uses 1-based indexed format placeholders; the upstream uses %0, %1, ... .

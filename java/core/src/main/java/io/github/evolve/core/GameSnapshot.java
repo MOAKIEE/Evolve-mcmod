@@ -9,18 +9,22 @@ import java.util.Map;
 public record GameSnapshot(long revision, long elapsedTicks, Phase phase, boolean paused,
                            String species, String genus, int progress,
                            List<ResourceView> resources, List<ActionView> actions,
-                           Map<String, Integer> technologies, Map<String, Double> traits) {
-    public enum Phase { EVOLUTION, CIVILIZATION_READY }
+                           Map<String, Integer> technologies, Map<String, Double> traits,
+                           List<JobView> jobs) {
+    public enum Phase { EVOLUTION, CIVILIZATION_READY, PRIMITIVE }
 
     public GameSnapshot {
         resources = List.copyOf(resources);
         actions = List.copyOf(actions);
         technologies = ordered(technologies);
         traits = ordered(traits);
+        jobs = List.copyOf(jobs);
     }
 
     public record ResourceView(String id, TextRef name, double amount, double capacity,
                                double changePerSecond, boolean visible) {}
+
+    public record JobView(String id, TextRef name, int workers, int capacity, boolean defaultJob) {}
 
     public record ActionView(String id, String category, TextRef title, List<TextRef> tooltip,
                              int count, Map<String, Double> costs,

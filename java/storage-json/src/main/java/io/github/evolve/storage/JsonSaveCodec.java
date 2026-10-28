@@ -86,7 +86,7 @@ public final class JsonSaveCodec implements SaveCodec<String> {
 
     private static void validateShape(JsonElement tree) {
         var root = fields(tree, "schemaVersion", "ruleset", "elapsedTicks", "revision", "tickRemainder", "loopCycle",
-                "paused", "phase", "randomSeed", "species", "genus", "progress", "context", "resources", "structures", "technologies", "traits");
+                "paused", "phase", "randomSeed", "species", "genus", "progress", "context", "resources", "structures", "technologies", "traits", "civilization");
         integers(root, "schemaVersion", "tickRemainder", "loopCycle", "randomSeed", "progress");
         integer(root.get("elapsedTicks"));
         integer(root.get("revision"));
@@ -104,7 +104,11 @@ public final class JsonSaveCodec implements SaveCodec<String> {
             if (!entry.isJsonPrimitive() || !entry.getAsJsonPrimitive().isString() || !species.add(entry.getAsString()))
                 throw new SaveFormatException("Invalid or duplicate extinct species");
         }
-        var resources = fields(root.get("resources"), "RNA", "DNA");
+        var civilization = fields(root.get("civilization"), "primaryGenus", "unemployed");
+        strings(civilization, "primaryGenus");
+        integers(civilization, "unemployed");
+        if (!root.get("resources").isJsonObject()) throw new SaveFormatException("Invalid resources");
+        var resources = root.getAsJsonObject("resources");
         for (var resource : resources.entrySet()) {
             var value = fields(resource.getValue(), "amount", "capacity", "visible", "changePerSecond");
             for (String name : Set.of("amount", "capacity", "changePerSecond")) number(value.get(name));
