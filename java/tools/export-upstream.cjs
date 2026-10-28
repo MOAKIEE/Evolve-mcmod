@@ -93,6 +93,7 @@ const extras = {
         ui_increase_slots: 'Add a slot', ui_decrease_slots: 'Remove a slot', ui_no_slots: 'No available slots.',
         ui_cement_worker_capacity: 'Adds %0 cement worker positions.', ui_shed_cement: 'Increases cement storage capacity by %0.',
         ui_sawmill_effect: 'Increases lumber production by %0% and storage capacity by %1.',
+        ui_farm_population: 'Increases population capacity by %0.',
     },
     zh_cn: {
         ui_title: '进化', ui_resources: '资源', ui_actions: '演化', ui_pause: '暂停',
@@ -122,6 +123,7 @@ const extras = {
         ui_increase_slots: '增加一个分配位', ui_decrease_slots: '减少一个分配位', ui_no_slots: '没有可用的分配位。',
         ui_cement_worker_capacity: '增加 %0 个水泥工岗位。', ui_shed_cement: '水泥存储容量增加 %0。',
         ui_sawmill_effect: '木材产出增加 %0%，存储容量增加 %1。',
+        ui_farm_population: '人口容量增加 %0。',
     },
 };
 const defaults = JSON.parse(read('strings/strings.json'));
@@ -129,7 +131,7 @@ for (const [locale, file] of [['en_us', null], ['zh_cn', 'strings/strings.zh-CN.
     const translated = file ? { ...defaults, ...JSON.parse(read(file)) } : defaults;
     const selected = Object.fromEntries(Object.entries(translated)
         .filter(([key, value]) => typeof value === 'string' &&
-            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money|Copper|Iron|Cement)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?|shed_title1|university(?:_effect)?|max_knowledge|bank|smelter(?:_effect1)?|cement_plant|sawmill)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining|storage|science|banking|investing|metal_working|copper_axes|copper_pickaxe|iron_mining|iron_axes|iron_pickaxe|smelting|cement|iron_saw)(?:_desc)?$|job_(unemployed|farmer|lumberjack|quarry_worker|miner|professor|banker|cement_worker(?:_desc)?)$)/.test(key))
+            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money|Copper|Iron|Cement)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?|shed_title1|university(?:_effect)?|max_knowledge|bank|smelter(?:_effect1)?|cement_plant|sawmill)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining|storage|science|banking|investing|metal_working|copper_axes|copper_pickaxe|iron_mining|iron_axes|iron_pickaxe|smelting|cement|iron_saw|farm_house|reinforced_shed)(?:_desc)?$|job_(unemployed|farmer|lumberjack|quarry_worker|miner|professor|banker|cement_worker(?:_desc)?)$)/.test(key))
         .map(([key, value]) => [`evolve.${key}`, plain(value)]));
     for (const [key, value] of Object.entries(extras[locale])) selected[`evolve.${key}`] = value;
     // Minecraft uses 1-based indexed format placeholders; the upstream uses %0, %1, ... .

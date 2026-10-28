@@ -284,6 +284,8 @@
   "evolve.tech_housing_desc": "解锁基本住房单元，可供一位市民居住",
   "evolve.tech_agriculture": "农业",
   "evolve.tech_agriculture_desc": "了解农业的基础知识，解锁农场",
+  "evolve.tech_farm_house": "农舍",
+  "evolve.tech_farm_house_desc": "使农场可供一位市民居住",
   "evolve.tech_irrigation": "灌溉",
   "evolve.tech_irrigation_desc": "发现灌溉的好处",
   "evolve.tech_mining": "采矿",
@@ -296,6 +298,8 @@
   "evolve.tech_iron_mining_desc": "学习如何开采铁",
   "evolve.tech_storage": "基本存储",
   "evolve.tech_storage_desc": "存储资源的场所，解锁窝棚",
+  "evolve.tech_reinforced_shed": "加强窝棚",
+  "evolve.tech_reinforced_shed_desc": "升级窝棚",
   "evolve.tech_currency": "货币",
   "evolve.tech_currency_desc": "引入货币的概念",
   "evolve.tech_banking": "银行业",
@@ -1145,5 +1149,6 @@
   "evolve.ui_no_slots": "没有可用的分配位。",
   "evolve.ui_cement_worker_capacity": "增加 %1$s 个水泥工岗位。",
   "evolve.ui_shed_cement": "水泥存储容量增加 %1$s。",
-  "evolve.ui_sawmill_effect": "木材产出增加 %1$s%%，存储容量增加 %2$s。"
+  "evolve.ui_sawmill_effect": "木材产出增加 %1$s%%，存储容量增加 %2$s。",
+  "evolve.ui_farm_population": "人口容量增加 %1$s。"
 }

@@ -21,8 +21,8 @@ final class CivilizationRules {
     static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "miner", "cement_worker", "professor", "banker");
     static final Map<String, Integer> TECH_MAX = Map.ofEntries(Map.entry("primitive", 3), Map.entry("housing", 1),
             Map.entry("agriculture", 2), Map.entry("currency", 1), Map.entry("axe", 3), Map.entry("mining", 3),
-            Map.entry("storage", 1), Map.entry("science", 1), Map.entry("banking", 2), Map.entry("pickaxe", 2), Map.entry("smelting", 1),
-            Map.entry("cement", 1), Map.entry("saw", 1));
+            Map.entry("storage", 2), Map.entry("science", 1), Map.entry("banking", 2), Map.entry("pickaxe", 2), Map.entry("smelting", 1),
+            Map.entry("cement", 1), Map.entry("saw", 1), Map.entry("farm", 1));
     static final Map<String, Rule> ALL = build();
 
     private CivilizationRules() {}
@@ -86,13 +86,16 @@ final class CivilizationRules {
 
     static void updateCapacities(EvolutionState state) {
         state.resources.get("Food").capacity = 1000;
-        state.resources.get("Lumber").capacity = 200 + 100d * state.count("lumber_yard") + 300d * state.count("shed") + 200d * state.count("sawmill");
-        state.resources.get("Stone").capacity = 200 + 100d * state.count("rock_quarry") + (state.tech("primitive") >= 2 ? 300d * state.count("shed") : 0);
+        state.resources.get("Lumber").capacity = 200 + 100d * state.count("lumber_yard") + (double) shedCapacity(300, state.tech("storage")) * state.count("shed") + 200d * state.count("sawmill");
+        state.resources.get("Stone").capacity = 200 + 100d * state.count("rock_quarry") + (state.tech("primitive") >= 2 ? (double) shedCapacity(300, state.tech("storage")) * state.count("shed") : 0);
         state.resources.get("Knowledge").capacity = 100 + 500d * state.count("university");
         state.resources.get("Money").capacity = 1000 + 1800d * state.count("bank");
-        state.resources.get("Copper").capacity = 100 + (state.resources.get("Copper").visible ? 90d * state.count("shed") : 0);
-        state.resources.get("Iron").capacity = 100 + (state.resources.get("Iron").visible ? 125d * state.count("shed") : 0);
-        state.resources.get("Cement").capacity = 100 + (state.resources.get("Cement").visible ? 100d * state.count("shed") : 0);
+        state.resources.get("Copper").capacity = 100 + (state.resources.get("Copper").visible ? (double) shedCapacity(90, state.tech("storage")) * state.count("shed") : 0);
+        state.resources.get("Iron").capacity = 100 + (state.resources.get("Iron").visible ? (double) shedCapacity(125, state.tech("storage")) * state.count("shed") : 0);
+        state.resources.get("Cement").capacity = 100 + (state.resources.get("Cement").visible ? (double) shedCapacity(100, state.tech("storage")) * state.count("shed") : 0);
+        var population = state.resources.get("human");
+        population.capacity = state.count("basic_housing") + (state.tech("farm") > 0 ? state.count("farm") : 0);
+        population.visible = population.capacity > 0;
         var civ = state.civilization;
         state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), true, civ.smelter());
     }
@@ -230,7 +233,12 @@ final class CivilizationRules {
         research(rules, "smelting", Map.of("mining", 3), "smelting", 1, Map.of("Knowledge", 4050d), s -> s.structures.put("smelter", 0));
         research(rules, "cement", Map.of("mining", 1, "storage", 1, "science", 1), "cement", 1, Map.of("Knowledge", 500d), s -> s.structures.put("cement_plant", 0));
         research(rules, "iron_saw", Map.of("axe", 1, "mining", 3), "saw", 1, Map.of("Knowledge", 3375d, "Iron", 400d), s -> s.structures.put("sawmill", 0));
-        building(rules, "farm", "agriculture", "city_farm", 3, 50, 1.32, 20, 1.36, 10, 1.36, s -> {});
+        research(rules, "farm_house", Map.of("agriculture", 1, "housing", 1, "currency", 1), "farm", 1, Map.of("Money", 50d, "Knowledge", 180d), s -> {});
+        research(rules, "reinforced_shed", Map.of("storage", 1, "cement", 1, "mining", 3), "storage", 2,
+                Map.of("Money", 3750d, "Knowledge", 2550d, "Iron", 750d, "Cement", 500d), s -> {});
+        building(rules, "farm", "agriculture", "city_farm", 3, 50, 1.32, 20, 1.36, 10, 1.36, s -> {
+            if (s.tech("farm") > 0) { s.resources.get("human").capacity++; s.resources.get("human").visible = true; }
+        });
         building(rules, "lumber_yard", "axe", "city_lumber_yard", 5, 5, 1.85, 6, 1.9, 2, 1.95,
                 s -> s.resources.get("Lumber").capacity += 100);
         building(rules, "rock_quarry", "mining", "city_rock_quarry", 2, 20, 1.45, 50, 1.36, 10, 1.36,
@@ -240,11 +248,11 @@ final class CivilizationRules {
                 s -> Map.of("Money", scaled(75, 1.22, s.count("shed")), "Lumber", scaled(55, 1.32, s.count("shed")), "Stone", scaled(45, 1.32, s.count("shed"))),
                 s -> {
                     s.addStructure("shed");
-                    s.resources.get("Lumber").capacity += 300;
-                    s.resources.get("Stone").capacity += 300;
-                    if (s.resources.get("Copper").visible) s.resources.get("Copper").capacity += 90;
-                    if (s.resources.get("Iron").visible) s.resources.get("Iron").capacity += 125;
-                    if (s.resources.get("Cement").visible) s.resources.get("Cement").capacity += 100;
+                    s.resources.get("Lumber").capacity += shedCapacity(300, s.tech("storage"));
+                    s.resources.get("Stone").capacity += shedCapacity(300, s.tech("storage"));
+                    if (s.resources.get("Copper").visible) s.resources.get("Copper").capacity += shedCapacity(90, s.tech("storage"));
+                    if (s.resources.get("Iron").visible) s.resources.get("Iron").capacity += shedCapacity(125, s.tech("storage"));
+                    if (s.resources.get("Cement").visible) s.resources.get("Cement").capacity += shedCapacity(100, s.tech("storage"));
                 }, CivilizationRules::shedTooltip, "shed", null));
         rules.put("city-university", new Rule("city-university", "science", "city_university",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("science") > 0,
@@ -303,12 +311,14 @@ final class CivilizationRules {
 
     private static double scaled(int base, double scale, int count) { return Math.round(base * Math.pow(scale, count)); }
 
+    static int shedCapacity(int base, int storage) { return (int) Math.round(base * (storage >= 2 ? 2.25 : 1)); }
+
     private static List<TextRef> shedTooltip(EvolutionState state) {
         var texts = new java.util.ArrayList<TextRef>();
-        texts.add(TextRef.of("ui_shed_effect", 300));
-        if (state.resources.get("Copper").visible) texts.add(TextRef.of("ui_shed_copper", 90));
-        if (state.resources.get("Iron").visible) texts.add(TextRef.of("ui_shed_iron", 125));
-        if (state.resources.get("Cement").visible) texts.add(TextRef.of("ui_shed_cement", 100));
+        texts.add(TextRef.of("ui_shed_effect", shedCapacity(300, state.tech("storage"))));
+        if (state.resources.get("Copper").visible) texts.add(TextRef.of("ui_shed_copper", shedCapacity(90, state.tech("storage"))));
+        if (state.resources.get("Iron").visible) texts.add(TextRef.of("ui_shed_iron", shedCapacity(125, state.tech("storage"))));
+        if (state.resources.get("Cement").visible) texts.add(TextRef.of("ui_shed_cement", shedCapacity(100, state.tech("storage"))));
         return List.copyOf(texts);
     }
 
@@ -326,7 +336,8 @@ final class CivilizationRules {
                     costs.put("Stone", (double) Math.round(stone * Math.pow(stoneScale, count)));
                     return costs;
                 }, s -> { s.addStructure(id); extra.accept(s); },
-                s -> List.of(TextRef.of(title + (id.equals("lumber_yard") ? "" : "_desc"))), id, null));
+                s -> id.equals("farm") && s.tech("farm") > 0 ? List.of(TextRef.of("city_farm_desc"), TextRef.of("ui_farm_population", 1)) :
+                        List.of(TextRef.of(title + (id.equals("lumber_yard") ? "" : "_desc"))), id, null));
     }
 
     private static void gather(Map<String, Rule> rules, String id, String resource, int primitive, String title,

@@ -381,6 +381,58 @@ public final class EvolveDesktop {
             throw new IllegalStateException("Cement worker button used old session");
         panel.jobButton("cement_worker", true).doClick();
         render(panel, Path.of("build/preview-cement.png"), 1400);
+        farmStorageSmokeTest(panel);
+    }
+
+    private static void farmStorageSmokeTest(EvolvePanel panel) throws Exception {
+        panel.jobButton("cement_worker", false).doClick();
+        double houses = panel.engine().exportSave().resources().get("human").capacity();
+        buyWithStorage(panel, "tech-farm_house");
+        if (panel.engine().exportSave().resources().get("human").capacity() != houses)
+            throw new IllegalStateException("Farm housing applied before midLoop");
+        if (!panel.saveGame()) throw new IllegalStateException("Pending farm housing save failed");
+        panel.loadGame();
+        if (panel.engine().exportSave().resources().get("human").capacity() != houses)
+            throw new IllegalStateException("Loading applied pending farm housing");
+        panel.actionButton("city-farm").doClick();
+        if (panel.engine().exportSave().resources().get("human").capacity() != houses + 1)
+            throw new IllegalStateException("New farm housing did not apply immediately");
+        panel.engine().advanceTicks(20);
+        waitFor(panel, "human", houses + 1);
+        panel.jobButton("farmer", true).doClick();
+        waitFor(panel, "Stone", 3000);
+        panel.jobButton("cement_worker", true).doClick();
+        waitFor(panel, "Cement", 500);
+        panel.jobButton("cement_worker", false).doClick();
+        panel.jobButton("quarry_worker", true).doClick();
+        panel.jobButton("lumberjack", true).doClick();
+        for (int expansions = 0; !panel.engine().snapshot().actions().stream().filter(a -> a.id().equals("city-shed")).findFirst().orElseThrow().fitsStorage(); expansions++) {
+            if (expansions >= 50) throw new IllegalStateException("Pending reinforced shed expansion stalled");
+            buyWithStorage(panel, "city-lumber_yard");
+        }
+        var shed = panel.engine().snapshot().actions().stream().filter(a -> a.id().equals("city-shed")).findFirst().orElseThrow();
+        shed.costs().forEach((id, amount) -> waitFor(panel, id, amount + (id.equals("Money") ? 3750 : 0)));
+        waitFor(panel, "Knowledge", 2550);
+        waitFor(panel, "Iron", 750);
+        var before = panel.engine().exportSave();
+        panel.actionButton("tech-reinforced_shed").doClick();
+        if (panel.engine().exportSave().resources().get("Lumber").capacity() != before.resources().get("Lumber").capacity())
+            throw new IllegalStateException("Reinforced storage applied before midLoop");
+        panel.actionButton("city-shed").doClick();
+        if (panel.engine().exportSave().resources().get("Lumber").capacity() != before.resources().get("Lumber").capacity() + 675)
+            throw new IllegalStateException("New reinforced shed did not apply immediately");
+        if (!panel.saveGame()) throw new IllegalStateException("Mixed storage save failed");
+        var saved = panel.engine().exportSave();
+        panel.engine().advanceTicks(20);
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Loading applied pending reinforced storage");
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        int sheds = panel.engine().exportSave().structures().get("shed");
+        if (panel.engine().exportSave().resources().get("Copper").capacity() != 100 + 203d * sheds ||
+                panel.engine().exportSave().resources().get("Iron").capacity() != 100 + 281d * sheds)
+            throw new IllegalStateException("Reinforced shed rounding failed");
+        render(panel, Path.of("build/preview-farm-storage.png"), 1400);
     }
 
     private static void buyWithStorage(EvolvePanel panel, String id) {

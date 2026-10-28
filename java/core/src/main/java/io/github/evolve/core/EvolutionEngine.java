@@ -435,18 +435,31 @@ public final class EvolutionEngine implements GameEngine {
                 save.structures().containsKey("sawmill") != saw || saw &&
                 (mining < 3 || !save.technologies().containsKey("axe")) || save.structures().getOrDefault("sawmill", 0) > 0 && cementPlants == 0)
             throw new IllegalArgumentException("Missing cement or sawmill prerequisite");
+        int storage = save.technologies().getOrDefault("storage", 0);
+        boolean farmHousing = save.technologies().containsKey("farm");
+        if (storage >= 2 && (!cement || mining < 3 || cementPlants == 0) || farmHousing &&
+                (!housing || !currency || !save.technologies().containsKey("agriculture")))
+            throw new IllegalArgumentException("Missing reinforced storage or farm housing prerequisite");
         if (universities > 0 && !currency) throw new IllegalArgumentException("Missing university currency prerequisite");
         checkResource(save, "Food", save.civilization().capacitiesInitialized() ? 1000 : 250, primitive >= 1);
-        checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0) + 300d * sheds +
-                200d * save.structures().getOrDefault("sawmill", 0), true);
-        checkResource(save, "Stone", 200 + 100d * save.structures().getOrDefault("rock_quarry", 0) + 300d * sheds, primitive >= 2);
+        double lumberSheds = save.resources().get("Lumber").capacity() - 200 - 100d * save.structures().getOrDefault("lumber_yard", 0) -
+                200d * save.structures().getOrDefault("sawmill", 0);
+        double stoneSheds = save.resources().get("Stone").capacity() - 200 - 100d * save.structures().getOrDefault("rock_quarry", 0);
+        if (lumberSheds != stoneSheds || !validShedGain(lumberSheds, 300, storage, sheds, true))
+            throw new IllegalArgumentException("Inconsistent lumber or stone shed capacity");
+        checkResource(save, "Lumber", save.resources().get("Lumber").capacity(), true);
+        checkResource(save, "Stone", save.resources().get("Stone").capacity(), primitive >= 2);
         checkResource(save, "Knowledge", 100 + 500d * universities, primitive >= 3);
         checkResource(save, "Money", 1000 + 1800d * banks, currency);
         checkStoredMaterial(save, "Copper", 90, mines > 0, sheds);
         checkStoredMaterial(save, "Iron", 125, mining >= 3, sheds);
         checkStoredMaterial(save, "Cement", 100, cementPlants > 0, sheds);
-        checkResource(save, "human", houses, houses > 0);
         var population = save.resources().get("human");
+        double farmCapacity = population.capacity() - houses;
+        if (farmCapacity != Math.rint(farmCapacity) || farmCapacity < 0 ||
+                farmCapacity > (farmHousing ? save.structures().getOrDefault("farm", 0) : 0))
+            throw new IllegalArgumentException("Inconsistent farm population capacity");
+        checkResource(save, "human", population.capacity(), population.capacity() > 0);
         if (!save.civilization().workers().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)) ||
                 !save.civilization().assigned().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)))
             throw new IllegalArgumentException("Invalid job set");
@@ -493,11 +506,31 @@ public final class EvolutionEngine implements GameEngine {
 
     private static void checkStoredMaterial(GameSave save, String id, int perShed, boolean visible, int sheds) {
         var resource = save.resources().get(id);
-        double applied = (resource.capacity() - 100) / perShed;
-        // Old sheds apply at the next midLoop after unlock; new sheds apply immediately.
-        if (resource.visible() != visible || applied != Math.rint(applied) || applied < 0 || applied > sheds ||
+        // Unlocks and storage research apply to old sheds at the next midLoop; new sheds apply immediately.
+        if (resource.visible() != visible || !validShedGain(resource.capacity() - 100, perShed,
+                save.technologies().getOrDefault("storage", 0), sheds, false) ||
                 !visible && (resource.amount() != 0 || resource.capacity() != 100 || resource.changePerSecond() != 0))
             throw new IllegalArgumentException("Inconsistent material capacity or visibility: " + id);
+    }
+
+    private static boolean validShedGain(double gain, int original, int storage, int sheds, boolean allApplied) {
+        if (gain < 0 || gain != Math.rint(gain)) return false;
+        int upgraded = CivilizationRules.shedCapacity(original, storage);
+        if (storage < 2) {
+            double applied = gain / original;
+            return applied == Math.rint(applied) && applied <= sheds && (!allApplied || applied == sheds);
+        }
+        if (allApplied) {
+            double updated = (gain - (double) original * sheds) / (upgraded - original);
+            return updated == Math.rint(updated) && updated >= 0 && updated <= sheds;
+        }
+        // Find an integer combination of old and upgraded sheds without scanning the building count.
+        int highest = (int) Math.min(sheds, gain / upgraded);
+        for (int updated = highest; updated >= Math.max(0, highest - original + 1); updated--) {
+            double old = (gain - (double) updated * upgraded) / original;
+            if (old == Math.rint(old)) return old + updated <= sheds;
+        }
+        return false;
     }
 
     private static void validateContext(EvolutionContext context) {
