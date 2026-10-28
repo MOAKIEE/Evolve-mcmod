@@ -98,6 +98,7 @@ class CivilizationParityTest {
         var civilization = expected.has("civilization") ? expected.getAsJsonObject("civilization") : expected;
         assertEquals(civilization.get("unemployed").getAsInt(), save.civilization().unemployed());
         assertEquals(GSON.fromJson(civilization.get("workers"), new TypeToken<Map<String, Integer>>() {}.getType()), save.civilization().workers());
+        assertEquals(GSON.fromJson(civilization.get("assigned"), new TypeToken<Map<String, Integer>>() {}.getType()), save.civilization().assigned());
         assertEquals(civilization.get("capacitiesInitialized").getAsBoolean(), save.civilization().capacitiesInitialized());
         if (expected.has("available")) availability(expected.getAsJsonArray("available"), game);
     }

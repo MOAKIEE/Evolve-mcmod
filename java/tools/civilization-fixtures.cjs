@@ -32,9 +32,10 @@ function section(start, end) {
 }
 const resourceIds = ['RNA', 'DNA', 'Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'human'];
 const traitIds = ['adaptable', 'wasteful', 'creative', 'diverse'];
-const cityIds = ['food', 'lumber', 'stone', 'basic_housing', 'farm', 'lumber_yard', 'rock_quarry'];
-const techIds = ['club', 'bone_tools', 'sundial', 'housing', 'agriculture', 'irrigation', 'currency', 'stone_axe', 'mining'];
-const jobIds = ['farmer', 'lumberjack', 'quarry_worker'];
+const structureIds = ['basic_housing', 'farm', 'lumber_yard', 'rock_quarry', 'shed', 'university'];
+const cityIds = ['food', 'lumber', 'stone', ...structureIds];
+const techIds = ['club', 'bone_tools', 'sundial', 'housing', 'agriculture', 'irrigation', 'currency', 'stone_axe', 'mining', 'storage', 'science'];
+const jobIds = ['farmer', 'lumberjack', 'quarry_worker', 'professor'];
 const fresh = { biome: 'grassland', universe: 'standard', seeded: false, rapidMutation: false,
     massExtinction: 0, novice: 0, master: 0, grandmaster: 0, unbound: 0, obsolete: 0,
     nightmare: false, extinctSpecies: [], productionMultiplier: 1 };
@@ -58,6 +59,7 @@ function environment(primary = true, multiplier = 1) {
         races: { human: { type: 'humanoid', traits: { creative: 1, diverse: 1 } } },
         traits: {}, planetTraits: {}, biomes: { grassland: { vars: () => [1.2] } }, govActive: () => 0, fathomCheck: () => 0,
         BHStorageMulti: n => n, spatialReasoning: n => n, getShrineBonus: () => ({ mult: 1 }), structName: id => id,
+        storageMultipler: () => 1, traitCostMod: (trait, cost) => cost, isStargateOn: () => false, shrineBonusActive: () => false,
         powerOnNewStruct: () => {},
         checkAltPurgatory: (region, id, alternate, value) => { g[region][id] = structuredClone(value); },
         eventActive: () => ({ active: false }), getHalloween: () => ({ active: false }),
@@ -67,7 +69,7 @@ function environment(primary = true, multiplier = 1) {
         defineGovernment: () => {}, calc_mastery: () => {}, altRace: () => {}, tagEvent: () => {}, alevel: () => 1,
         loadTab: () => {}, loadSpecialResource: () => {}, blubberFill: () => {},
         loadResource: (id, wiki, max) => { g.resource[id] ??= { amount: 0, max, display: false, delta: 0 }; },
-        loadJob: (id, define, impact) => { g.civic[id] = { workers: 0, display: false, impact }; },
+        loadJob: (id, define, impact) => { g.civic[id] = { workers: 0, assigned: 0, display: false, impact }; },
         workerScale: n => n, highPopAdjust: n => n, jobName: id => id, racialTrait: () => 1,
         syndicate: () => 1, production: () => 1, astroSign: '', gene_sequence: false,
     };
@@ -83,6 +85,9 @@ function environment(primary = true, multiplier = 1) {
     const midSource = fn('main', 'midLoop');
     const midBase = midSource.slice(midSource.indexOf('        var caps = {', midSource.indexOf('        // Resource caps')), midSource.indexOf('        var lCaps ='));
     const midStorage = midSource.slice(midSource.indexOf("        if (global.city['rock_quarry']){"), midSource.indexOf("        else if (global.city['graveyard']){"));
+    const shedStorage = section("        if (global.city['shed']){", "        if (global.race['lone_survivor']){");
+    const universityCaps = section("        if (global.city['university']){", "        if (global.race['lone_survivor'] && global.tauceti['alien_outpost']){");
+    const refillSource = section("        Object.keys(job_desc).forEach(function (job){", '        let entertainment = 0;');
     const program = `${functions}\nvar actions = { city: {${city}}, tech: {${tech}},
         space: { spc_red: { biodome: { title: () => 'biodome' } } } };
         Math.random = () => seededRandom(0, 1);
@@ -90,6 +95,8 @@ function environment(primary = true, multiplier = 1) {
         function fast() {
             const global_multiplier = ${multiplier}; const time_multiplier = .25;
             const date = new Date('2026-01-01T00:00:00Z'); const q_multiplier = 1; const zigVal = 1;
+            const job_desc = ${JSON.stringify(Object.fromEntries(jobIds.map(id => [id, 'fixture'])))};
+            ${refillSource}
             ${section('        // Consumption\n', '        // Fortress Repair\n')}
             ${section('        // Citizen Growth\n', "        if (global.space['shipyard']")}
             let hunger = fed ? 1 : .5;
@@ -102,7 +109,11 @@ function environment(primary = true, multiplier = 1) {
         function mid() {
             ${midBase}
             ${midStorage}
-            for (const id of ['Food', 'Lumber', 'Stone']) global.resource[id].max = caps[id];
+            ${shedStorage}
+            const lCaps = { professor: 0 };
+            ${universityCaps}
+            for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge']) global.resource[id].max = caps[id];
+            global.civic.professor.max = lCaps.professor;
         }
         function assign(job, delta) {
             const keyMultiplier = () => Math.abs(delta);
@@ -111,7 +122,7 @@ function environment(primary = true, multiplier = 1) {
         }
         sentience();`;
     vm.runInContext(program, context, { timeout: 1000 });
-    for (const id of ['unemployed', ...jobIds]) g.civic[id].max = -1;
+    for (const id of ['unemployed', ...jobIds]) g.civic[id].max = id === 'professor' ? 0 : -1;
     for (const id of Object.keys(g.resource)) {
         temporary.resource[id] = { temp_max: g.resource[id].max };
         sandbox.breakdown.p[id] = {};
@@ -151,9 +162,10 @@ function environment(primary = true, multiplier = 1) {
         return {
             resources: Object.fromEntries(resourceIds.map(id => [id, { amount: g.resource[id].amount, capacity: g.resource[id].max,
                 visible: g.resource[id].display, changePerSecond: 0 }])),
-            structures: Object.fromEntries(Object.entries(g.city).filter(([id]) => ['basic_housing', 'farm', 'lumber_yard', 'rock_quarry'].includes(id)).map(([id, v]) => [id, v.count])),
+            structures: Object.fromEntries(Object.entries(g.city).filter(([id]) => structureIds.includes(id)).map(([id, v]) => [id, v.count])),
             technologies: { ...g.tech }, traits: Object.fromEntries(traitIds.map(id => [id, g.race[id]])), seed: g.seed,
             unemployed: g.civic.unemployed.workers, workers: Object.fromEntries(jobIds.map(id => [id, g.civic[id].workers])),
+            assigned: Object.fromEntries(jobIds.map(id => [id, g.civic[id].assigned])),
             capacitiesInitialized,
             available: Object.entries({ ...Object.fromEntries(cityIds.map(id => [`city-${id}`, sandbox.actions.city[id]])),
                 ...Object.fromEntries(techIds.map(id => [`tech-${id}`, sandbox.actions.tech[id]])) }).filter(([, rule]) => visible(rule))
@@ -162,11 +174,11 @@ function environment(primary = true, multiplier = 1) {
     }
     function save() {
         const data = view();
-        return { schemaVersion: 3, ruleset: 'evolve-1.4.10/settlement-1', elapsedTicks: 0, revision: 0, tickRemainder: 0, loopCycle: 0,
+        return { schemaVersion: 4, ruleset: 'evolve-1.4.10/science-1', elapsedTicks: 0, revision: 0, tickRemainder: 0, loopCycle: 0,
             paused: false, phase: 'PRIMITIVE', randomSeed: g.seed, species: 'human', genus: 'humanoid', progress: 100,
             context: { ...fresh, productionMultiplier: multiplier }, resources: data.resources, structures: data.structures,
             technologies: data.technologies, traits: data.traits, civilization: { primaryGenus: primary ? 'humanoid' : '',
-                unemployed: g.civic.unemployed.workers, workers: data.workers, capacitiesInitialized } };
+                unemployed: g.civic.unemployed.workers, workers: data.workers, assigned: data.assigned, capacitiesInitialized } };
     }
     return { g, act, fast, view, save, assign: (job, delta) => vm.runInContext(`assign('${job}', ${delta})`, context, { timeout: 1000 }) };
 }
@@ -192,7 +204,7 @@ for (let stage = 0; stage <= 4; stage++) {
         for (const id of ['Lumber', 'Stone', 'Food', 'Knowledge']) if (env.g.resource[id].display) env.g.resource[id].amount = 50;
         const input = env.save();
         const available = env.view().available;
-        const actions = available.map(({ id }) => {
+        const actions = available.filter(({ costs }) => Object.entries(costs).every(([id, cost]) => env.g.resource[id].amount >= cost)).map(({ id }) => {
             const next = prepare(stage, houses);
             for (const res of ['Lumber', 'Stone', 'Food', 'Knowledge']) if (next.g.resource[res].display) next.g.resource[res].amount = 50;
             // Money remains unavailable in this scope; the sixth cabin needs currency.
@@ -219,7 +231,8 @@ for (const [population, food, seed, multiplier] of [[0, 1, 2, 1], [1, 0, 1, 1], 
     production.push({ name: `population-${population}-food-${food}-seed-${seed}-multiplier-${multiplier}`, input, frames });
 }
 function settlement(options = {}) {
-    const { houses = 8, farms = 2, yards = 1, quarries = 1, irrigated = false, multiplier = 1, currency = true } = options;
+    const { houses = 8, farms = 2, yards = 1, quarries = 1, sheds = 0, universities = 0, science = false,
+        irrigated = false, multiplier = 1, currency = true } = options;
     const env = prepare(4, 0, true, multiplier);
     function buy(id) {
         for (const resource of Object.values(env.g.resource)) if (resource.max > 0) resource.amount = resource.max;
@@ -228,14 +241,19 @@ function settlement(options = {}) {
     for (const id of ['tech-agriculture', 'tech-stone_axe', 'tech-mining']) buy(id);
     if (currency) buy('tech-currency');
     if (irrigated) buy('tech-irrigation');
+    if (sheds > 0) buy('tech-storage');
+    if (science || universities > 0) buy('tech-science');
+    for (let i = 0; i < sheds; i++) buy('city-shed');
     for (const [id, count] of [['basic_housing', houses], ['farm', farms], ['lumber_yard', yards], ['rock_quarry', quarries]]) {
         for (let i = 0; i < count; i++) buy(`city-${id}`);
     }
+    for (let i = 0; i < universities; i++) buy('city-university');
     for (const resource of Object.values(env.g.resource)) resource.amount = 0;
     return env;
 }
 for (const options of [{}, { farms: 0, yards: 0, quarries: 0 }, { houses: 10, farms: 4, yards: 5, quarries: 3, irrigated: true },
-    { houses: 5, farms: 3, yards: 4, quarries: 2, currency: false }]) {
+    { houses: 5, farms: 3, yards: 4, quarries: 2, currency: false },
+    { science: true }, { sheds: 1, universities: 1 }, { sheds: 2, universities: 2 }]) {
     const env = settlement(options);
     function fund(next) {
         for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money'])
@@ -256,6 +274,10 @@ for (const options of [
     { population: 8, farmers: 2, lumberjacks: 2, quarriers: 2, farms: 1, yards: 3, quarries: 2, food: 250, seed: 79, multiplier: 2.125 },
     { population: 5, farmers: 0, lumberjacks: 1, quarriers: 0, farms: 0, food: 250, seed: 2, multiplier: 1.45 },
     { population: 5, farmers: 0, lumberjacks: 0, quarriers: 0, farms: 0, food: 0, seed: 2, multiplier: 0.1 },
+    { population: 8, farmers: 3, lumberjacks: 1, quarriers: 1, professors: 1, sheds: 1, universities: 1, food: 100, seed: 2 },
+    { population: 8, farmers: 0, lumberjacks: 3, quarriers: 3, professors: 2, sheds: 2, universities: 2, food: 0, seed: 1 },
+    { population: 8, farmers: 4, lumberjacks: 1, quarriers: 1, professors: 2, sheds: 2, universities: 2, food: 50, seed: 42, irrigated: true, multiplier: 1.375 },
+    { population: 5, farmers: 0, lumberjacks: 0, quarriers: 0, professors: 0, professorTarget: 2, sheds: 2, universities: 2, food: 100, seed: 2 },
 ]) {
     const env = settlement(options);
     const { population, farmers, lumberjacks, quarriers, food, seed } = options;
@@ -266,6 +288,8 @@ for (const options of [
     env.assign('farmer', farmers);
     env.assign('lumberjack', lumberjacks);
     env.assign('quarry_worker', quarriers);
+    env.assign('professor', options.professors || 0);
+    if (options.professorTarget) env.g.civic.professor.assigned = options.professorTarget;
     const input = env.save();
     const frames = [];
     for (let i = 1; i <= 240; i++) {
@@ -276,8 +300,9 @@ for (const options of [
 }
 const assignments = [];
 for (const [job, delta, initial] of [['farmer', 2, 0], ['lumberjack', 100, 0], ['quarry_worker', 1, 0],
-    ['farmer', -1, 2], ['lumberjack', -100, 3], ['quarry_worker', -1, 0]]) {
-    const env = settlement();
+    ['farmer', -1, 2], ['lumberjack', -100, 3], ['quarry_worker', -1, 0],
+    ['professor', 100, 0], ['professor', 1, 2], ['professor', -1, 2], ['professor', -100, 1]]) {
+    const env = settlement(job === 'professor' ? { sheds: 2, universities: 2 } : {});
     env.g.resource.human.amount = 5;
     env.g.civic.unemployed.workers = 5;
     env.assign(job, initial);
@@ -289,7 +314,7 @@ for (const [job, delta, initial] of [['farmer', 2, 0], ['lumberjack', 100, 0], [
 }
 const result = {
     provenance: files.map(file => ({ file, sha256: crypto.createHash('sha256').update(sources[file]).digest('hex') })),
-    boundary: 'Human/grassland/standard only. Executes original sentience, resource defaults, selected tech/building actions and costs, job add/sub methods, farmerValue, food/growth/knowledge/lumber/stone/income blocks and base/storage midLoop caps. Neutral weather, tax rate 20, no prestige, events, government, default-job switching or other jobs. Host multiplier is supplied explicitly, Math.random uses persisted seededRandom. Host normalizes workforce at the atomic tick boundary, releasing unemployed then jobs in reverse order after deaths; original delayed labor-anomaly repair is outside this fixture.',
+    boundary: 'Human/grassland/standard only. Executes original sentience, resource defaults, selected tech/building actions and costs including sheds/universities, job add/sub and finite-job refill, farmerValue, food/growth/knowledge/lumber/stone/income blocks and base/storage/university midLoop caps. Professor capacity is one per university; assigned targets survive deaths. Neutral weather, tax rate 20, no prestige, events, government, default-job switching or other jobs. Host multiplier is supplied explicitly, Math.random uses persisted seededRandom. Host normalizes workforce at the atomic tick boundary, releasing unemployed then jobs in reverse order after deaths; original delayed labor-anomaly repair is outside this fixture.',
     initialization, cases, production, assignments,
 };
 const output = JSON.stringify(result, null, 2) + '\n';

@@ -334,7 +334,8 @@ public final class EvolvePanel extends JPanel {
         }
 
         void update(GameSnapshot.JobView job, int available, boolean paused) {
-            text.setText(localizer.text("ui_job_workers", localizer.text(job.name()), job.workers()));
+            text.setText(job.capacity() < 0 ? localizer.text("ui_job_workers", localizer.text(job.name()), job.workers()) :
+                    localizer.text("ui_job_workers_limited", localizer.text(job.name()), job.workers(), job.capacity()));
             add.setToolTipText(localizer.text("ui_assign_worker"));
             remove.setToolTipText(localizer.text("ui_release_worker"));
             add.getAccessibleContext().setAccessibleName(localizer.text("ui_assign_worker") + ": " + localizer.text(job.name()));

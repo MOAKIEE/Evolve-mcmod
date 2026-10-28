@@ -184,6 +184,41 @@ public final class EvolveDesktop {
             throw new IllegalStateException("Job button used old session");
         panel.jobButton("lumberjack", true).doClick();
         render(panel, Path.of("build/preview-jobs.png"), 900);
+        researchSettlementSmokeTest(panel);
+    }
+
+    static void researchSettlementSmokeTest(EvolvePanel panel) throws Exception {
+        waitFor(panel, "Knowledge", 20);
+        panel.actionButton("tech-storage").doClick();
+        waitFor(panel, "Money", 75);
+        waitFor(panel, "Lumber", 55);
+        waitFor(panel, "Stone", 45);
+        panel.actionButton("city-shed").doClick();
+        waitFor(panel, "Knowledge", 65);
+        panel.actionButton("tech-science").doClick();
+        waitFor(panel, "Money", 400);
+        waitFor(panel, "Lumber", 300);
+        waitFor(panel, "Stone", 400);
+        panel.actionButton("city-university").doClick();
+        waitFor(panel, "human", 6);
+        panel.jobButton("professor", true).doClick();
+        if (panel.jobButton("professor", true).isEnabled() || !panel.jobButton("professor", false).isEnabled())
+            throw new IllegalStateException("Professor capacity controls failed");
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        if (panel.engine().exportSave().resources().get("Knowledge").capacity() != 600 ||
+                panel.engine().exportSave().resources().get("Knowledge").changePerSecond() != 1.5)
+            throw new IllegalStateException("University research production failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Science save failed");
+        var saved = panel.engine().exportSave();
+        panel.jobButton("professor", false).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Science load failed");
+        panel.jobButton("professor", false).doClick();
+        if (panel.engine().exportSave().civilization().workers().get("professor") != 0)
+            throw new IllegalStateException("Professor button used old session");
+        panel.jobButton("professor", true).doClick();
+        render(panel, Path.of("build/preview-science.png"), 900);
     }
 
     private static void waitFor(EvolvePanel panel, String id, double amount) {

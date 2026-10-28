@@ -138,6 +138,67 @@ class JsonPersistenceTest {
         assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
     }
 
+    @Test
+    void scienceSavePreservesVacantTargetsAndFutureProduction() {
+        var save = scienceSave();
+        var game = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        assertEquals(0, restored.exportSave().civilization().workers().get("professor"));
+        assertEquals(1, restored.exportSave().civilization().assigned().get("professor"));
+        game.advanceTicks(23);
+        restored.advanceTicks(23);
+        assertEquals(game.exportSave(), restored.exportSave());
+        assertEquals(1, restored.exportSave().civilization().workers().get("professor"));
+        assertEquals(600, restored.exportSave().resources().get("Knowledge").capacity());
+        assertEquals(500, restored.exportSave().resources().get("Lumber").capacity());
+        assertEquals(1.5, restored.exportSave().resources().get("Knowledge").changePerSecond());
+    }
+
+    @Test
+    void rejectsOldSettlementSavesAndCorruptScienceDependenciesTargetsOrCapacities() {
+        var changes = java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 3),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/settlement-1"),
+                root -> root.getAsJsonObject("civilization").remove("assigned"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").remove("professor"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("professor", 2),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("professor", -1),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("professor", 0.5),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("professor", 4_294_967_296L),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("professor", 2),
+                root -> root.getAsJsonObject("technologies").remove("science"),
+                root -> root.getAsJsonObject("technologies").remove("storage"),
+                root -> root.getAsJsonObject("technologies").remove("currency"),
+                root -> root.getAsJsonObject("structures").addProperty("university", 0),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Knowledge").addProperty("capacity", 100),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Lumber").addProperty("capacity", 200),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Stone").addProperty("capacity", 200)
+        );
+        for (var change : changes) {
+            var root = JsonParser.parseString(codec.encode(scienceSave())).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
+    }
+
+    private static GameSave scienceSave() {
+        var save = primitive().exportSave();
+        var resources = new LinkedHashMap<>(save.resources());
+        resources.put("Food", new GameSave.ResourceState(100, 250, true, 0));
+        resources.put("Lumber", new GameSave.ResourceState(0, 500, true, 0));
+        resources.put("Stone", new GameSave.ResourceState(0, 500, true, 0));
+        resources.put("Knowledge", new GameSave.ResourceState(0, 600, true, 0));
+        resources.put("Money", new GameSave.ResourceState(0, 1000, true, 0));
+        resources.put("human", new GameSave.ResourceState(2, 2, true, 0));
+        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "professor", 0);
+        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "professor", 1);
+        return new GameSave(save.schemaVersion(), save.ruleset(), 0, 0, 0, 0, false, save.phase(), save.randomSeed(),
+                save.species(), save.genus(), save.progress(), save.context(), resources,
+                Map.of("basic_housing", 2, "shed", 1, "university", 1),
+                Map.of("primitive", 3, "housing", 1, "currency", 1, "storage", 1, "science", 1), save.traits(),
+                new CivilizationState("humanoid", 2, workers, assigned, false));
+    }
+
     private static EvolutionEngine primitive() {
         var fresh = EvolutionEngine.newGame(2).exportSave();
         var resources = new LinkedHashMap<String, GameSave.ResourceState>();

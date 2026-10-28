@@ -123,11 +123,15 @@ public final class EvolutionEngine implements GameEngine {
         var civ = state.civilization;
         var workers = new LinkedHashMap<>(civ.workers());
         int available = command.delta() > 0 ? civ.unemployed() : workers.get(command.jobId());
+        int capacity = CivilizationRules.jobCapacity(state, command.jobId());
+        if (command.delta() > 0 && capacity >= 0) available = Math.min(available, capacity - workers.get(command.jobId()));
         int applied = Math.min(Math.abs(command.delta()), available);
         if (applied > 0) {
             int change = command.delta() > 0 ? applied : -applied;
             workers.put(command.jobId(), workers.get(command.jobId()) + change);
-            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, civ.capacitiesInitialized());
+            var assigned = new LinkedHashMap<>(civ.assigned());
+            assigned.put(command.jobId(), workers.get(command.jobId()));
+            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized());
             state.revision += applied;
         }
         return result(applied == Math.abs(command.delta()) ? Status.OK : Status.NO_AVAILABLE_WORKERS, applied);
@@ -265,7 +269,7 @@ public final class EvolutionEngine implements GameEngine {
         if (state.phase == Phase.PRIMITIVE) {
             jobs.add(new GameSnapshot.JobView("unemployed", TextRef.of("job_unemployed"), state.civilization.unemployed(), -1, true));
             for (String job : CivilizationRules.JOBS) if (CivilizationRules.jobVisible(state, job))
-                jobs.add(new GameSnapshot.JobView(job, TextRef.of("job_" + job), state.civilization.workers().get(job), -1, false));
+                jobs.add(new GameSnapshot.JobView(job, TextRef.of("job_" + job), state.civilization.workers().get(job), CivilizationRules.jobCapacity(state, job), false));
         }
         return new GameSnapshot(state.revision, state.elapsedTicks, state.phase, state.paused,
                 state.species, state.genus, state.progress, resources, actions, state.technologies, state.traits, jobs);
@@ -345,7 +349,7 @@ public final class EvolutionEngine implements GameEngine {
                     !save.structures().isEmpty() || !save.technologies().isEmpty() ||
                     save.resources().values().stream().anyMatch(GameSave.ResourceState::visible) ||
                     !SpeciesCatalog.startingTraits(save.species()).equals(save.traits()) || save.civilization().unemployed() != 0 ||
-                    !save.civilization().workers().isEmpty() || save.civilization().capacitiesInitialized())
+                    !save.civilization().workers().isEmpty() || !save.civilization().assigned().isEmpty() || save.civilization().capacitiesInitialized())
                 throw new IllegalArgumentException("Invalid civilization handoff");
             validatePrimaryGenus(save);
         } else if (primitive) {
@@ -369,21 +373,27 @@ public final class EvolutionEngine implements GameEngine {
         int houses = save.structures().getOrDefault("basic_housing", 0);
         if (housing && primitive != 3 || save.structures().containsKey("basic_housing") != housing)
             throw new IllegalArgumentException("Inconsistent primitive structures");
-        for (var dependency : Map.of("farm", "agriculture", "lumber_yard", "axe", "rock_quarry", "mining").entrySet()) {
+        for (var dependency : Map.of("farm", "agriculture", "lumber_yard", "axe", "rock_quarry", "mining", "shed", "storage", "university", "science").entrySet()) {
             if (save.structures().containsKey(dependency.getKey()) != save.technologies().containsKey(dependency.getValue()) ||
                     save.technologies().containsKey(dependency.getValue()) && primitive != 3)
                 throw new IllegalArgumentException("Inconsistent production structure");
         }
         boolean currency = save.technologies().containsKey("currency");
         if (currency && !housing || houses > 5 && !currency) throw new IllegalArgumentException("Missing currency prerequisite");
+        if (save.technologies().containsKey("storage") && !currency || save.technologies().containsKey("science") && !housing)
+            throw new IllegalArgumentException("Missing storage or science prerequisite");
+        int sheds = save.structures().getOrDefault("shed", 0);
+        int universities = save.structures().getOrDefault("university", 0);
+        if (universities > 0 && !currency) throw new IllegalArgumentException("Missing university currency prerequisite");
         checkResource(save, "Food", save.civilization().capacitiesInitialized() ? 1000 : 250, primitive >= 1);
-        checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0), true);
-        checkResource(save, "Stone", 200 + 100d * save.structures().getOrDefault("rock_quarry", 0), primitive >= 2);
-        checkResource(save, "Knowledge", 100, primitive >= 3);
+        checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0) + 300d * sheds, true);
+        checkResource(save, "Stone", 200 + 100d * save.structures().getOrDefault("rock_quarry", 0) + 300d * sheds, primitive >= 2);
+        checkResource(save, "Knowledge", 100 + 500d * universities, primitive >= 3);
         checkResource(save, "Money", 1000, currency);
         checkResource(save, "human", houses, houses > 0);
         var population = save.resources().get("human");
-        if (!save.civilization().workers().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)))
+        if (!save.civilization().workers().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)) ||
+                !save.civilization().assigned().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)))
             throw new IllegalArgumentException("Invalid job set");
         long totalWorkers = save.civilization().unemployed();
         if (totalWorkers < 0) throw new IllegalArgumentException("Invalid unemployed count");
@@ -392,10 +402,15 @@ public final class EvolutionEngine implements GameEngine {
                 case "farmer" -> save.structures().getOrDefault("farm", 0) > 0;
                 case "lumberjack" -> save.technologies().containsKey("axe");
                 case "quarry_worker" -> save.structures().getOrDefault("rock_quarry", 0) > 0;
+                case "professor" -> universities > 0;
                 default -> false;
             };
             if (job.getValue() < 0 || job.getValue() > 1_000_000 || !visible && job.getValue() != 0)
                 throw new IllegalArgumentException("Invalid worker assignment");
+            int target = save.civilization().assigned().get(job.getKey());
+            int capacity = job.getKey().equals("professor") ? universities : 1_000_000;
+            if (target < job.getValue() || target > capacity || target < 0 || !visible && target != 0 || job.getValue() > capacity)
+                throw new IllegalArgumentException("Invalid job target or capacity");
             totalWorkers += job.getValue();
         }
         if (population.amount() != Math.rint(population.amount()) || totalWorkers != population.amount())

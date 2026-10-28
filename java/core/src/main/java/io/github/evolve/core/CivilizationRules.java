@@ -17,9 +17,9 @@ final class CivilizationRules {
                 Function<EvolutionState, List<TextRef>> tooltip, String structure, String gathers) {}
 
     static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "human");
-    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry");
-    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker");
-    static final Map<String, Integer> TECH_MAX = Map.of("primitive", 3, "housing", 1, "agriculture", 2, "currency", 1, "axe", 1, "mining", 1);
+    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university");
+    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "professor");
+    static final Map<String, Integer> TECH_MAX = Map.of("primitive", 3, "housing", 1, "agriculture", 2, "currency", 1, "axe", 1, "mining", 1, "storage", 1, "science", 1);
     static final Map<String, Rule> ALL = build();
 
     private CivilizationRules() {}
@@ -60,19 +60,26 @@ final class CivilizationRules {
             case "farmer" -> state.count("farm") > 0;
             case "lumberjack" -> state.tech("axe") >= 1;
             case "quarry_worker" -> state.count("rock_quarry") > 0;
+            case "professor" -> state.count("university") > 0;
             default -> false;
         };
     }
 
+    static int jobCapacity(EvolutionState state, String job) {
+        return job.equals("professor") ? state.count("university") : -1;
+    }
+
     static void updateCapacities(EvolutionState state) {
         state.resources.get("Food").capacity = 1000;
-        state.resources.get("Lumber").capacity = 200 + 100d * state.count("lumber_yard");
-        state.resources.get("Stone").capacity = 200 + 100d * state.count("rock_quarry");
+        state.resources.get("Lumber").capacity = 200 + 100d * state.count("lumber_yard") + 300d * state.count("shed");
+        state.resources.get("Stone").capacity = 200 + 100d * state.count("rock_quarry") + (state.tech("primitive") >= 2 ? 300d * state.count("shed") : 0);
+        state.resources.get("Knowledge").capacity = 100 + 500d * state.count("university");
         var civ = state.civilization;
-        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), true);
+        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), true);
     }
 
     static void fastLoop(EvolutionState state) {
+        refillJobs(state);
         var population = state.resources.get("human");
         var food = state.resources.get("Food");
         var knowledge = state.resources.get("Knowledge");
@@ -92,7 +99,7 @@ final class CivilizationRules {
         if (fed && food.amount > 0 && population.amount < population.capacity &&
                 state.nextRoll(population.amount * (3 - Math.pow(2, 0.25))) <= 0) { population.amount++; unemployed++; }
         double hunger = fed ? 1 : 0.5;
-        knowledge.rate = state.tech("primitive") >= 3 ? multiplier : 0;
+        knowledge.rate = (workers.get("professor") * 0.5 * hunger + (state.tech("primitive") >= 3 ? 1 : 0)) * multiplier;
         knowledge.addCapped(knowledge.rate * 0.25);
         produce(state, "Lumber", workers.get("lumberjack") * (1 + state.count("lumber_yard") * 0.02) * hunger * multiplier);
         produce(state, "Stone", workers.get("quarry_worker") * (1 + state.count("rock_quarry") * 0.02) * hunger * multiplier);
@@ -104,6 +111,21 @@ final class CivilizationRules {
         money.rate = deposit == 0 ? 0 : deposit * 4;
         money.addCapped(deposit);
         reconcileWorkers(state, unemployed);
+    }
+
+    private static void refillJobs(EvolutionState state) {
+        var civ = state.civilization;
+        var workers = new LinkedHashMap<>(civ.workers());
+        int unemployed = civ.unemployed();
+        // Original fastLoop replenishes each finite job by at most one worker, before production.
+        for (String job : JOBS) {
+            int capacity = jobCapacity(state, job);
+            if (unemployed > 0 && workers.get(job) < capacity && workers.get(job) < civ.assigned().get(job)) {
+                workers.put(job, workers.get(job) + 1);
+                unemployed--;
+            }
+        }
+        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.assigned(), civ.capacitiesInitialized());
     }
 
     private static void produce(EvolutionState state, String id, double rate) {
@@ -124,7 +146,7 @@ final class CivilizationRules {
             excess -= loss;
         }
         var civ = state.civilization;
-        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.capacitiesInitialized());
+        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.assigned(), civ.capacitiesInitialized());
     }
 
     private static Map<String, Rule> build() {
@@ -145,11 +167,28 @@ final class CivilizationRules {
         research(rules, "currency", Map.of("housing", 1), "currency", 1, Map.of("Knowledge", 22d, "Lumber", 10d), s -> s.resources.get("Money").visible = true);
         research(rules, "stone_axe", 3, "axe", 1, Map.of("Knowledge", 45d, "Lumber", 20d, "Stone", 20d), s -> s.structures.put("lumber_yard", 0));
         research(rules, "mining", 3, "mining", 1, Map.of("Knowledge", 45d), s -> s.structures.put("rock_quarry", 0));
+        research(rules, "storage", Map.of("primitive", 3, "currency", 1), "storage", 1, Map.of("Knowledge", 20d), s -> s.structures.put("shed", 0));
+        research(rules, "science", Map.of("housing", 1), "science", 1, Map.of("Knowledge", 65d), s -> s.structures.put("university", 0));
         building(rules, "farm", "agriculture", "city_farm", 3, 50, 1.32, 20, 1.36, 10, 1.36, s -> {});
         building(rules, "lumber_yard", "axe", "city_lumber_yard", 5, 5, 1.85, 6, 1.9, 2, 1.95,
                 s -> s.resources.get("Lumber").capacity += 100);
         building(rules, "rock_quarry", "mining", "city_rock_quarry", 2, 20, 1.45, 50, 1.36, 10, 1.36,
                 s -> s.resources.get("Stone").capacity += 100);
+        rules.put("city-shed", new Rule("city-shed", "trade", "city_shed_title1",
+                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("storage") > 0,
+                s -> Map.of("Money", scaled(75, 1.22, s.count("shed")), "Lumber", scaled(55, 1.32, s.count("shed")), "Stone", scaled(45, 1.32, s.count("shed"))),
+                s -> {
+                    s.addStructure("shed");
+                    s.resources.get("Lumber").capacity += 300;
+                    s.resources.get("Stone").capacity += 300;
+                }, s -> List.of(TextRef.of("ui_shed_effect", 300)), "shed", null));
+        rules.put("city-university", new Rule("city-university", "science", "city_university",
+                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("science") > 0,
+                s -> Map.of("Money", scaled(900, 1.5, s.count("university")) - 500,
+                        "Lumber", scaled(500, 1.36, s.count("university")) - 200,
+                        "Stone", scaled(750, 1.36, s.count("university")) - 350),
+                s -> { s.addStructure("university"); s.resources.get("Knowledge").capacity += 500; },
+                s -> List.of(TextRef.of("city_university_effect", 1), TextRef.of("city_max_knowledge", 500)), "university", null));
         rules.put("city-basic_housing", new Rule("city-basic_housing", "residential", "city_basic_housing_title",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("housing") == 1,
                 s -> {
@@ -165,6 +204,8 @@ final class CivilizationRules {
                 }, s -> List.of(TextRef.of("city_basic_housing_desc")), "basic_housing", null));
         return GameSnapshot.ordered(rules);
     }
+
+    private static double scaled(int base, double scale, int count) { return Math.round(base * Math.pow(scale, count)); }
 
     private static void building(Map<String, Rule> rules, String id, String tech, String title,
                                  int moneyAfter, int money, double moneyScale, int lumber, double lumberScale,
