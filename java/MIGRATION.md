@@ -23,7 +23,7 @@
 | --- | --- | --- |
 | Java 工程、快照、指令、存档契约 | 已建立 | 无 MC 或脚本运行时依赖 |
 | 演化规则 | 已实现，范围见下 | 从 RNA/DNA 到物种与文明交接点 |
-| JSON 与文件适配器 | 待验证 | 不复用浏览器 localStorage |
+| JSON 与文件适配器 | 已实现并验证 | 不复用浏览器 localStorage |
 | GUI 预览 | 待验证 | 验证接口；MC Screen 后续接入 |
 | 文明、人口、工作、科技、工业、战斗 | 未迁移 | 保留原版源码供对照 |
 | 太空、星际、星系、地狱、伊甸、Truepath | 未迁移 | 保留原版源码供对照 |
@@ -55,3 +55,13 @@ GUI 速率为最近一个 fastLoop 的资源变化折算值，包含溢出前的
 node tools/reference-fixtures.cjs --check
 .\gradlew.bat :core:test
 ```
+
+### 2026-10-28：独立存档适配器
+
+`JsonSaveCodec` 实现 `SaveCodec<String>`，JSON 带 `schemaVersion=1` 和 `ruleset=evolve-1.4.10/evolution-1`。持久化资源、结构、科技、进度、种子、暂停、时间余数、循环相位、演化上下文和交接 traits。读取时检查字段、类型、精确整数、数值范围、重复键、输入大小、嵌套深度以及阶段约束；拒绝未知版本，不会把损坏存档静默当作新局。
+
+`AtomicFileSaveStore` 使用同目录临时文件、文件 force、优先原子替换，保存上一份有效存档为 `.bak`。文件系统不支持原子移动时回退到普通替换，因此不承诺所有文件系统上的断电事务性。它不覆盖已损坏的主存档，`loadBackup()` 供宿主显式恢复。每个文件应只有一个 writer/store；未来多人模式使用独立、由服务端授权绑定的会话。
+
+原版 LZString 浏览器存档不是本格式；当前没有无损导入器，也不能把客户端提供的 JSON 直接作为服务器状态。接入 MC 时可以实现 `SaveCodec<CompoundTag>` 或直接将 `GameSave` 映射到 SavedData/NBT，不必使用文件适配器。
+
+验证覆盖保存/读取后继续模拟一致、时间相位保留、损坏与版本拒绝、溢出整数、重复字段、备份保留和临时文件清理。
