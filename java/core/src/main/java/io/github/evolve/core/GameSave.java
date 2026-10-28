@@ -10,8 +10,8 @@ public record GameSave(int schemaVersion, String ruleset, long elapsedTicks, lon
                        Map<String, ResourceState> resources, Map<String, Integer> structures,
                        Map<String, Integer> technologies, Map<String, Double> traits,
                        CivilizationState civilization) {
-    public static final int SCHEMA_VERSION = 2;
-    public static final String RULESET = "evolve-1.4.10/primitive-1";
+    public static final int SCHEMA_VERSION = 3;
+    public static final String RULESET = "evolve-1.4.10/settlement-1";
 
     public GameSave {
         resources = GameSnapshot.ordered(resources);

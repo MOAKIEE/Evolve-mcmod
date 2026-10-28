@@ -82,6 +82,7 @@ public final class EvolutionEngine implements GameEngine {
             if (state.paused != pause.paused()) { state.paused = pause.paused(); state.revision++; }
             return result(Status.OK, 1);
         }
+        if (command instanceof GameCommand.AssignJob assignment) return assignJob(assignment);
         if (!(command instanceof GameCommand.Action action) || action.actionId() == null ||
                 action.repetitions() < 1 || action.repetitions() > MAX_REPETITIONS)
             return result(Status.INVALID_COMMAND, 0);
@@ -112,6 +113,24 @@ public final class EvolutionEngine implements GameEngine {
             applied++;
         }
         return result(applied == action.repetitions() ? Status.OK : status, applied);
+    }
+
+    private CommandResult assignJob(GameCommand.AssignJob command) {
+        if (command.jobId() == null || command.delta() == 0 || command.delta() < -MAX_REPETITIONS || command.delta() > MAX_REPETITIONS)
+            return result(Status.INVALID_COMMAND, 0);
+        if (state.paused) return result(Status.PAUSED, 0);
+        if (state.phase != Phase.PRIMITIVE || !CivilizationRules.jobVisible(state, command.jobId())) return result(Status.LOCKED, 0);
+        var civ = state.civilization;
+        var workers = new LinkedHashMap<>(civ.workers());
+        int available = command.delta() > 0 ? civ.unemployed() : workers.get(command.jobId());
+        int applied = Math.min(Math.abs(command.delta()), available);
+        if (applied > 0) {
+            int change = command.delta() > 0 ? applied : -applied;
+            workers.put(command.jobId(), workers.get(command.jobId()) + change);
+            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, civ.capacitiesInitialized());
+            state.revision += applied;
+        }
+        return result(applied == Math.abs(command.delta()) ? Status.OK : Status.NO_AVAILABLE_WORKERS, applied);
     }
 
     private CommandResult executeCivilization(GameCommand.Action action) {
@@ -154,7 +173,10 @@ public final class EvolutionEngine implements GameEngine {
                 if (state.phase == Phase.EVOLUTION) {
                     fastLoop();
                     if (state.loopCycle % 4 == 0) updateCapacities();
-                } else CivilizationRules.fastLoop(state);
+                } else {
+                    CivilizationRules.fastLoop(state);
+                    if (state.loopCycle % 4 == 0) CivilizationRules.updateCapacities(state);
+                }
             }
         }
     }
@@ -239,8 +261,12 @@ public final class EvolutionEngine implements GameEngine {
                         !state.paused && !full && count < 1_000_000 && affordable(costs), fitsStorage(costs)));
             }
         }
-        List<GameSnapshot.JobView> jobs = state.phase == Phase.PRIMITIVE ?
-                List.of(new GameSnapshot.JobView("unemployed", TextRef.of("job_unemployed"), state.civilization.unemployed(), -1, true)) : List.of();
+        var jobs = new ArrayList<GameSnapshot.JobView>();
+        if (state.phase == Phase.PRIMITIVE) {
+            jobs.add(new GameSnapshot.JobView("unemployed", TextRef.of("job_unemployed"), state.civilization.unemployed(), -1, true));
+            for (String job : CivilizationRules.JOBS) if (CivilizationRules.jobVisible(state, job))
+                jobs.add(new GameSnapshot.JobView(job, TextRef.of("job_" + job), state.civilization.workers().get(job), -1, false));
+        }
         return new GameSnapshot(state.revision, state.elapsedTicks, state.phase, state.paused,
                 state.species, state.genus, state.progress, resources, actions, state.technologies, state.traits, jobs);
     }
@@ -305,7 +331,7 @@ public final class EvolutionEngine implements GameEngine {
                 throw new IllegalArgumentException("Invalid phase structure");
         });
         save.technologies().forEach((id, rank) -> {
-            boolean valid = primitive ? (id.equals("primitive") && rank >= 1 && rank <= 3 || id.equals("housing") && rank == 1) :
+            boolean valid = primitive ? rank >= 1 && rank <= CivilizationRules.TECH_MAX.getOrDefault(id, 0) :
                     EvolutionRules.TECHS.contains(id) && rank >= 1 && rank <= 8;
             if (!valid) throw new IllegalArgumentException("Invalid phase technology");
         });
@@ -318,7 +344,8 @@ public final class EvolutionEngine implements GameEngine {
             if (species == null || !species.genus().equals(save.genus()) || save.progress() != 100 ||
                     !save.structures().isEmpty() || !save.technologies().isEmpty() ||
                     save.resources().values().stream().anyMatch(GameSave.ResourceState::visible) ||
-                    !SpeciesCatalog.startingTraits(save.species()).equals(save.traits()) || save.civilization().unemployed() != 0)
+                    !SpeciesCatalog.startingTraits(save.species()).equals(save.traits()) || save.civilization().unemployed() != 0 ||
+                    !save.civilization().workers().isEmpty() || save.civilization().capacitiesInitialized())
                 throw new IllegalArgumentException("Invalid civilization handoff");
             validatePrimaryGenus(save);
         } else if (primitive) {
@@ -340,16 +367,38 @@ public final class EvolutionEngine implements GameEngine {
         int primitive = save.technologies().getOrDefault("primitive", 0);
         boolean housing = save.technologies().containsKey("housing");
         int houses = save.structures().getOrDefault("basic_housing", 0);
-        if (housing && primitive != 3 || save.structures().containsKey("basic_housing") != housing || houses > 5)
+        if (housing && primitive != 3 || save.structures().containsKey("basic_housing") != housing)
             throw new IllegalArgumentException("Inconsistent primitive structures");
-        checkResource(save, "Food", 250, primitive >= 1);
-        checkResource(save, "Lumber", 200, true);
-        checkResource(save, "Stone", 200, primitive >= 2);
+        for (var dependency : Map.of("farm", "agriculture", "lumber_yard", "axe", "rock_quarry", "mining").entrySet()) {
+            if (save.structures().containsKey(dependency.getKey()) != save.technologies().containsKey(dependency.getValue()) ||
+                    save.technologies().containsKey(dependency.getValue()) && primitive != 3)
+                throw new IllegalArgumentException("Inconsistent production structure");
+        }
+        boolean currency = save.technologies().containsKey("currency");
+        if (currency && !housing || houses > 5 && !currency) throw new IllegalArgumentException("Missing currency prerequisite");
+        checkResource(save, "Food", save.civilization().capacitiesInitialized() ? 1000 : 250, primitive >= 1);
+        checkResource(save, "Lumber", 200 + 100d * save.structures().getOrDefault("lumber_yard", 0), true);
+        checkResource(save, "Stone", 200 + 100d * save.structures().getOrDefault("rock_quarry", 0), primitive >= 2);
         checkResource(save, "Knowledge", 100, primitive >= 3);
-        checkResource(save, "Money", 1000, false);
+        checkResource(save, "Money", 1000, currency);
         checkResource(save, "human", houses, houses > 0);
         var population = save.resources().get("human");
-        if (population.amount() != Math.rint(population.amount()) || save.civilization().unemployed() != population.amount())
+        if (!save.civilization().workers().keySet().equals(java.util.Set.copyOf(CivilizationRules.JOBS)))
+            throw new IllegalArgumentException("Invalid job set");
+        long totalWorkers = save.civilization().unemployed();
+        if (totalWorkers < 0) throw new IllegalArgumentException("Invalid unemployed count");
+        for (var job : save.civilization().workers().entrySet()) {
+            boolean visible = switch (job.getKey()) {
+                case "farmer" -> save.structures().getOrDefault("farm", 0) > 0;
+                case "lumberjack" -> save.technologies().containsKey("axe");
+                case "quarry_worker" -> save.structures().getOrDefault("rock_quarry", 0) > 0;
+                default -> false;
+            };
+            if (job.getValue() < 0 || job.getValue() > 1_000_000 || !visible && job.getValue() != 0)
+                throw new IllegalArgumentException("Invalid worker assignment");
+            totalWorkers += job.getValue();
+        }
+        if (population.amount() != Math.rint(population.amount()) || totalWorkers != population.amount())
             throw new IllegalArgumentException("Inconsistent primitive population and jobs");
         for (String id : List.of("RNA", "DNA")) {
             var resource = save.resources().get(id);

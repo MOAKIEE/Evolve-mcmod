@@ -50,7 +50,7 @@ final class EvolutionState {
     void becomeSentient(String id) {
         species = id;
         genus = SpeciesCatalog.all().get(id).genus();
-        civilization = new CivilizationState(tech("evo_" + genus) >= 2 ? genus : "", 0);
+        civilization = CivilizationState.handoff(tech("evo_" + genus) >= 2 ? genus : "");
         traits.putAll(SpeciesCatalog.startingTraits(id));
         structures.clear();
         technologies.keySet().removeIf(key -> key.equals("evo") || key.startsWith("evo_"));

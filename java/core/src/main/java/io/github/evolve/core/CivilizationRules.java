@@ -1,5 +1,7 @@
 package io.github.evolve.core;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,7 +17,9 @@ final class CivilizationRules {
                 Function<EvolutionState, List<TextRef>> tooltip, String structure, String gathers) {}
 
     static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "human");
-    static final Set<String> STRUCTURES = Set.of("basic_housing");
+    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry");
+    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker");
+    static final Map<String, Integer> TECH_MAX = Map.of("primitive", 3, "housing", 1, "agriculture", 2, "currency", 1, "axe", 1, "mining", 1);
     static final Map<String, Rule> ALL = build();
 
     private CivilizationRules() {}
@@ -45,24 +49,82 @@ final class CivilizationRules {
         state.resources.put("human", new EvolutionState.Resource(0, 0, false));
         state.traits.clear();
         state.traits.putAll(traits(state.civilization));
+        var workers = new LinkedHashMap<String, Integer>();
+        JOBS.forEach(job -> workers.put(job, 0));
+        state.civilization = new CivilizationState(state.civilization.primaryGenus(), 0, workers, false);
         state.phase = GameSnapshot.Phase.PRIMITIVE;
+    }
+
+    static boolean jobVisible(EvolutionState state, String job) {
+        return switch (job) {
+            case "farmer" -> state.count("farm") > 0;
+            case "lumberjack" -> state.tech("axe") >= 1;
+            case "quarry_worker" -> state.count("rock_quarry") > 0;
+            default -> false;
+        };
+    }
+
+    static void updateCapacities(EvolutionState state) {
+        state.resources.get("Food").capacity = 1000;
+        state.resources.get("Lumber").capacity = 200 + 100d * state.count("lumber_yard");
+        state.resources.get("Stone").capacity = 200 + 100d * state.count("rock_quarry");
+        var civ = state.civilization;
+        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), true);
     }
 
     static void fastLoop(EvolutionState state) {
         var population = state.resources.get("human");
         var food = state.resources.get("Food");
         var knowledge = state.resources.get("Knowledge");
-        double consume = population.amount * 0.5; // All current citizens have the default unemployed job.
-        boolean fed = food.amount >= consume * 0.25;
-        food.rate = consume == 0 ? 0 : -consume;
-        food.addCapped(-consume * 0.25);
-        if (!fed && population.amount > 0 && state.nextInt(10) == 0) population.amount--;
+        var workers = state.civilization.workers();
+        int unemployed = state.civilization.unemployed();
+        int farmers = Math.min(workers.get("farmer"), state.count("farm"));
+        int farmhands = workers.get("farmer") - farmers;
+        double multiplier = state.context.productionMultiplier();
+        // Neutral weather until the calendar/weather subsystem is migrated.
+        double generated = (farmers * (0.82 + (state.tech("agriculture") >= 2 ? 1.15 : 0.65)) + farmhands * 0.82) * 1.2 * multiplier;
+        double consume = population.amount - unemployed * 0.5;
+        double delta = generated - consume;
+        boolean fed = food.amount + delta * 0.25 >= 0;
+        food.rate = delta == 0 ? 0 : delta;
+        food.addCapped(delta * 0.25);
+        if (!fed && population.amount > 0 && state.nextInt(10) == 0 && generated < consume / 1.25) population.amount--;
         if (fed && food.amount > 0 && population.amount < population.capacity &&
-                state.nextRoll(population.amount * (3 - Math.pow(2, 0.25))) <= 0) population.amount++;
-        // Keep the default job in sync at the atomic tick boundary (no other jobs yet).
-        state.civilization = new CivilizationState(state.civilization.primaryGenus(), (int) population.amount);
-        knowledge.rate = state.tech("primitive") >= 3 ? state.context.productionMultiplier() : 0;
+                state.nextRoll(population.amount * (3 - Math.pow(2, 0.25))) <= 0) { population.amount++; unemployed++; }
+        double hunger = fed ? 1 : 0.5;
+        knowledge.rate = state.tech("primitive") >= 3 ? multiplier : 0;
         knowledge.addCapped(knowledge.rate * 0.25);
+        produce(state, "Lumber", workers.get("lumberjack") * (1 + state.count("lumber_yard") * 0.02) * hunger * multiplier);
+        produce(state, "Stone", workers.get("quarry_worker") * (1 + state.count("rock_quarry") * 0.02) * hunger * multiplier);
+        // The original income block runs after population changes and rounds each fastLoop deposit.
+        double income = state.tech("currency") > 0 ? (population.amount - unemployed) * 0.4 * hunger * multiplier : 0;
+        var money = state.resources.get("Money");
+        // Match Number.toFixed(2) on the exact binary double, including negative deposits.
+        double deposit = new BigDecimal(income * 0.25).setScale(2, RoundingMode.HALF_UP).doubleValue();
+        money.rate = deposit == 0 ? 0 : deposit * 4;
+        money.addCapped(deposit);
+        reconcileWorkers(state, unemployed);
+    }
+
+    private static void produce(EvolutionState state, String id, double rate) {
+        state.resources.get(id).rate = rate;
+        state.resources.get(id).addCapped(rate * 0.25);
+    }
+
+    private static void reconcileWorkers(EvolutionState state, int unemployed) {
+        // Resolve deaths at the atomic tick boundary: release unemployed first, then the last job.
+        var workers = new LinkedHashMap<>(state.civilization.workers());
+        int excess = unemployed + workers.values().stream().mapToInt(Integer::intValue).sum() - (int) state.amount("human");
+        int released = Math.min(unemployed, Math.max(0, excess));
+        unemployed -= released;
+        excess -= released;
+        for (String job : JOBS.reversed()) {
+            int loss = Math.min(workers.get(job), Math.max(0, excess));
+            workers.put(job, workers.get(job) - loss);
+            excess -= loss;
+        }
+        var civ = state.civilization;
+        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.capacitiesInitialized());
     }
 
     private static Map<String, Rule> build() {
@@ -78,6 +140,16 @@ final class CivilizationRules {
         research(rules, "bone_tools", 1, "primitive", 2, Map.of("Food", 10d), s -> s.resources.get("Stone").visible = true);
         research(rules, "sundial", 2, "primitive", 3, Map.of("Lumber", 8d, "Stone", 10d), s -> s.resources.get("Knowledge").visible = true);
         research(rules, "housing", 3, "housing", 1, Map.of("Knowledge", 10d), s -> s.structures.put("basic_housing", 0));
+        research(rules, "agriculture", 3, "agriculture", 1, Map.of("Knowledge", 10d), s -> s.structures.put("farm", 0));
+        research(rules, "irrigation", Map.of("agriculture", 1), "agriculture", 2, Map.of("Knowledge", 55d), s -> {});
+        research(rules, "currency", Map.of("housing", 1), "currency", 1, Map.of("Knowledge", 22d, "Lumber", 10d), s -> s.resources.get("Money").visible = true);
+        research(rules, "stone_axe", 3, "axe", 1, Map.of("Knowledge", 45d, "Lumber", 20d, "Stone", 20d), s -> s.structures.put("lumber_yard", 0));
+        research(rules, "mining", 3, "mining", 1, Map.of("Knowledge", 45d), s -> s.structures.put("rock_quarry", 0));
+        building(rules, "farm", "agriculture", "city_farm", 3, 50, 1.32, 20, 1.36, 10, 1.36, s -> {});
+        building(rules, "lumber_yard", "axe", "city_lumber_yard", 5, 5, 1.85, 6, 1.9, 2, 1.95,
+                s -> s.resources.get("Lumber").capacity += 100);
+        building(rules, "rock_quarry", "mining", "city_rock_quarry", 2, 20, 1.45, 50, 1.36, 10, 1.36,
+                s -> s.resources.get("Stone").capacity += 100);
         rules.put("city-basic_housing", new Rule("city-basic_housing", "residential", "city_basic_housing_title",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("housing") == 1,
                 s -> {
@@ -94,6 +166,23 @@ final class CivilizationRules {
         return GameSnapshot.ordered(rules);
     }
 
+    private static void building(Map<String, Rule> rules, String id, String tech, String title,
+                                 int moneyAfter, int money, double moneyScale, int lumber, double lumberScale,
+                                 int stone, double stoneScale, Consumer<EvolutionState> extra) {
+        String actionId = "city-" + id;
+        rules.put(actionId, new Rule(actionId, "production", title,
+                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech(tech) > 0,
+                s -> {
+                    int count = s.count(id);
+                    var costs = new LinkedHashMap<String, Double>();
+                    if (count >= moneyAfter) costs.put("Money", (double) Math.round(money * Math.pow(moneyScale, count)));
+                    costs.put("Lumber", (double) Math.round(lumber * Math.pow(lumberScale, count)));
+                    costs.put("Stone", (double) Math.round(stone * Math.pow(stoneScale, count)));
+                    return costs;
+                }, s -> { s.addStructure(id); extra.accept(s); },
+                s -> List.of(TextRef.of(title + (id.equals("lumber_yard") ? "" : "_desc"))), id, null));
+    }
+
     private static void gather(Map<String, Rule> rules, String id, String resource, int primitive, String title,
                                Function<EvolutionState, List<TextRef>> tooltip) {
         String actionId = "city-" + id;
@@ -104,9 +193,14 @@ final class CivilizationRules {
 
     private static void research(Map<String, Rule> rules, String id, int primitive, String grant, int rank,
                                  Map<String, Double> costs, Consumer<EvolutionState> extra) {
+        research(rules, id, Map.of("primitive", primitive), grant, rank, costs, extra);
+    }
+
+    private static void research(Map<String, Rule> rules, String id, Map<String, Integer> requirements, String grant, int rank,
+                                 Map<String, Double> costs, Consumer<EvolutionState> extra) {
         String actionId = "tech-" + id;
         rules.put(actionId, new Rule(actionId, "research", "tech_" + id,
-                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("primitive") >= primitive && s.tech(grant) < rank,
+                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && requirements.entrySet().stream().allMatch(e -> s.tech(e.getKey()) >= e.getValue()) && s.tech(grant) < rank,
                 s -> costs, s -> { extra.accept(s); s.grant(grant, rank); },
                 s -> List.of(TextRef.of("tech_" + id + "_desc")), null, null));
     }

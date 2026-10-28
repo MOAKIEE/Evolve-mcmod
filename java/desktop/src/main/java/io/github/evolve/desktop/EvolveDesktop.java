@@ -107,7 +107,7 @@ public final class EvolveDesktop {
         fresh.resources().forEach((id, r) -> resources.put(id, new GameSave.ResourceState(r.amount(), r.capacity(), false, 0)));
         return new GameSave(GameSave.SCHEMA_VERSION, GameSave.RULESET, 0, 0, 0, 0, false,
                 GameSnapshot.Phase.CIVILIZATION_READY, 2, "human", "humanoid", 100, fresh.context(), resources,
-                Map.of(), Map.of(), SpeciesCatalog.startingTraits("human"), new CivilizationState("humanoid", 0));
+                Map.of(), Map.of(), SpeciesCatalog.startingTraits("human"), CivilizationState.handoff("humanoid"));
     }
 
     private static void civilizationSmokeTest(Path directory) throws Exception {

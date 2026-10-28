@@ -86,6 +86,11 @@ class JsonPersistenceTest {
         game.execute(new GameCommand.Action("city-food", 100));
         game.advanceTicks(5);
         assertEquals(1, game.exportSave().civilization().unemployed());
+        game.execute(new GameCommand.Action("city-stone", 20));
+        game.execute(new GameCommand.Action("city-lumber", 20));
+        game.advanceTicks(900);
+        assertEquals(io.github.evolve.core.CommandResult.Status.OK, game.execute(new GameCommand.Action("tech-stone_axe")).status());
+        assertEquals(io.github.evolve.core.CommandResult.Status.OK, game.execute(new GameCommand.AssignJob("lumberjack", 1)).status());
         var restored = EvolutionEngine.restore(codec.decode(codec.encode(game.exportSave())));
         assertEquals(game.snapshot(), restored.snapshot());
         game.advanceTicks(997);
@@ -105,6 +110,13 @@ class JsonPersistenceTest {
         invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("unemployed", 0.5));
         invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("unemployed", 4_294_967_296L));
         invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("primaryGenus", "plant"));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("lumberjack", 1));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("farmer", -1));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("quarry_worker", 0.5));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("farmer", 4_294_967_296L));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").remove("farmer"));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").addProperty("banker", 0));
+        invalidCivilization(root -> root.getAsJsonObject("civilization").addProperty("capacitiesInitialized", true));
         invalidCivilization(root -> root.getAsJsonObject("context").addProperty("universe", "evil"));
         invalidCivilization(root -> root.getAsJsonObject("resources").remove("Food"));
         invalidCivilization(root -> root.getAsJsonObject("resources").getAsJsonObject("human").addProperty("amount", 0.5));
@@ -115,6 +127,9 @@ class JsonPersistenceTest {
         invalidCivilization(root -> root.getAsJsonObject("technologies").addProperty("housing", 1));
         invalidCivilization(root -> root.getAsJsonObject("technologies").addProperty("currency", 1));
         invalidCivilization(root -> root.getAsJsonObject("structures").addProperty("basic_housing", 1));
+        invalidCivilization(root -> root.getAsJsonObject("technologies").addProperty("agriculture", 2));
+        invalidCivilization(root -> root.getAsJsonObject("structures").addProperty("farm", 1));
+        invalidCivilization(root -> root.getAsJsonObject("structures").addProperty("rock_quarry", 1));
     }
 
     private void invalidCivilization(Consumer<JsonObject> change) {
@@ -129,7 +144,7 @@ class JsonPersistenceTest {
         fresh.resources().forEach((id, r) -> resources.put(id, new GameSave.ResourceState(r.amount(), r.capacity(), false, 0)));
         var game = EvolutionEngine.restore(new GameSave(GameSave.SCHEMA_VERSION, GameSave.RULESET, 0, 0, 0, 0, false,
                 GameSnapshot.Phase.CIVILIZATION_READY, 2, "human", "humanoid", 100, fresh.context(),
-                resources, Map.of(), Map.of(), SpeciesCatalog.startingTraits("human"), new CivilizationState("humanoid", 0)));
+                resources, Map.of(), Map.of(), SpeciesCatalog.startingTraits("human"), CivilizationState.handoff("humanoid")));
         game.execute(new GameCommand.Action("civilization-start"));
         return game;
     }

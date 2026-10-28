@@ -82,6 +82,7 @@ const extras = {
         ui_ready_supported: '%0 are ready to found a settlement.', ui_civilization_actions: 'Settlement',
         ui_primitive: 'Primitive civilization', ui_jobs: 'Jobs', ui_job_workers: '%0: %1',
         ui_no_cost: 'No cost', ui_unlock_resource: 'Unlock the required resource first.',
+        ui_no_workers: 'No available workers.', ui_assign_worker: 'Assign a worker', ui_release_worker: 'Release a worker',
     },
     zh_cn: {
         ui_title: '进化', ui_resources: '资源', ui_actions: '演化', ui_pause: '暂停',
@@ -100,6 +101,7 @@ const extras = {
         ui_ready_supported: '%0已准备好建立聚落。', ui_civilization_actions: '聚落',
         ui_primitive: '原始文明', ui_jobs: '工作', ui_job_workers: '%0：%1',
         ui_no_cost: '无消耗', ui_unlock_resource: '请先解锁所需资源。',
+        ui_no_workers: '没有可调配的人口。', ui_assign_worker: '分配一名工人', ui_release_worker: '撤回一名工人',
     },
 };
 const defaults = JSON.parse(read('strings/strings.json'));
@@ -107,7 +109,7 @@ for (const [locale, file] of [['en_us', null], ['zh_cn', 'strings/strings.zh-CN.
     const translated = file ? { ...defaults, ...JSON.parse(read(file)) } : defaults;
     const selected = Object.fromEntries(Object.entries(translated)
         .filter(([key, value]) => typeof value === 'string' &&
-            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc))$|tech_(club|bone_tools|sundial|housing)(?:_desc)?$|job_unemployed$)/.test(key))
+            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining)(?:_desc)?$|job_(unemployed|farmer|lumberjack|quarry_worker)$)/.test(key))
         .map(([key, value]) => [`evolve.${key}`, plain(value)]));
     for (const [key, value] of Object.entries(extras[locale])) selected[`evolve.${key}`] = value;
     // Minecraft uses 1-based indexed format placeholders; the upstream uses %0, %1, ... .

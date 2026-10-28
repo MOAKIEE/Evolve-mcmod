@@ -65,6 +65,17 @@ class CivilizationParityTest {
                 }));
             }
         }
+        for (var item : fixtures.getAsJsonArray("assignments")) {
+            var test = item.getAsJsonObject();
+            tests.add(DynamicTest.dynamicTest("job/" + test.get("name").getAsString(), () -> {
+                var game = engine(test);
+                int delta = test.get("delta").getAsInt();
+                var result = game.execute(new GameCommand.AssignJob(test.get("job").getAsString(), delta));
+                assertEquals(test.get("applied").getAsInt(), result.applied());
+                assertEquals(result.applied() == Math.abs(delta) ? CommandResult.Status.OK : CommandResult.Status.NO_AVAILABLE_WORKERS, result.status());
+                compare(test.getAsJsonObject("expected"), game);
+            }));
+        }
         return tests.stream();
     }
 
@@ -84,6 +95,10 @@ class CivilizationParityTest {
         assertEquals(GSON.fromJson(expected.get("technologies"), new TypeToken<Map<String, Integer>>() {}.getType()), save.technologies());
         assertEquals(GSON.fromJson(expected.get("traits"), new TypeToken<Map<String, Double>>() {}.getType()), save.traits());
         assertEquals(expected.has("seed") ? expected.get("seed").getAsInt() : expected.get("randomSeed").getAsInt(), save.randomSeed());
+        var civilization = expected.has("civilization") ? expected.getAsJsonObject("civilization") : expected;
+        assertEquals(civilization.get("unemployed").getAsInt(), save.civilization().unemployed());
+        assertEquals(GSON.fromJson(civilization.get("workers"), new TypeToken<Map<String, Integer>>() {}.getType()), save.civilization().workers());
+        assertEquals(civilization.get("capacitiesInitialized").getAsBoolean(), save.civilization().capacitiesInitialized());
         if (expected.has("available")) availability(expected.getAsJsonArray("available"), game);
     }
 
