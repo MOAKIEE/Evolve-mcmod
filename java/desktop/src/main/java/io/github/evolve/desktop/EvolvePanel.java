@@ -58,13 +58,16 @@ public final class EvolvePanel extends JPanel {
     private final Map<String, JButton> actionButtons = new LinkedHashMap<>();
     private final Map<String, ResourceCard> resourceCards = new LinkedHashMap<>();
     private final JTextArea handoff = new JTextArea();
-    private final JTextArea jobs = new JTextArea();
+    private final JPanel jobs = panel(new GridLayout(0, 1, 0, 6));
+    private final JLabel jobTitle = label(17, ACCENT);
+    private final Map<String, JobRow> jobRows = new LinkedHashMap<>();
     private final JButton pause = button();
     private final JButton save = button();
     private final JButton load = button();
     private final JButton fresh = button();
     private List<String> previousActionIds = List.of();
     private List<String> previousResourceIds;
+    private List<String> previousJobIds = List.of();
     private long savedRevision = -1;
 
     public EvolvePanel(GameEngine engine, SaveStore store, String locale) {
@@ -98,17 +101,15 @@ public final class EvolvePanel extends JPanel {
         left.setPreferredSize(new Dimension(260, 400));
         left.add(resourceTitle, BorderLayout.NORTH);
         resourceList.setLayout(new BoxLayout(resourceList, BoxLayout.Y_AXIS));
-        for (var info : List.of(handoff, jobs)) {
-            info.setEditable(false);
-            info.setLineWrap(true);
-            info.setWrapStyleWord(true);
-            info.setFont(BODY);
-            info.setForeground(TEXT);
-            info.setBackground(BACKGROUND);
-            info.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
-            info.setAlignmentX(Component.LEFT_ALIGNMENT);
-            info.setMaximumSize(new Dimension(400, 100));
-        }
+        handoff.setEditable(false);
+        handoff.setLineWrap(true);
+        handoff.setWrapStyleWord(true);
+        handoff.setFont(BODY);
+        handoff.setForeground(TEXT);
+        handoff.setBackground(BACKGROUND);
+        handoff.setBorder(BorderFactory.createEmptyBorder(10, 0, 10, 0));
+        handoff.setAlignmentX(Component.LEFT_ALIGNMENT);
+        handoff.setMaximumSize(new Dimension(400, 100));
         var resourceScroll = new JScrollPane(resourceList, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED, JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         resourceScroll.setBorder(null);
         resourceScroll.getViewport().setBackground(BACKGROUND);
@@ -125,6 +126,7 @@ public final class EvolvePanel extends JPanel {
         scroll.getViewport().setBackground(BACKGROUND);
         scroll.getVerticalScrollBar().setUnitIncrement(18);
         right.add(scroll, BorderLayout.CENTER);
+        right.add(jobs, BorderLayout.SOUTH);
         content.add(right, BorderLayout.CENTER);
         add(content, BorderLayout.CENTER);
 
@@ -166,6 +168,7 @@ public final class EvolvePanel extends JPanel {
     GameEngine engine() { return engine; }
     String uiText(String key) { return localizer.text(key); }
     JButton actionButton(String id) { return actionButtons.get(id); }
+    JButton jobButton(String id, boolean recruit) { return recruit ? jobRows.get(id).add : jobRows.get(id).remove; }
     void tick() { engine.advanceTicks(1); refresh(); }
     boolean dirty() { return engine.snapshot().revision() != savedRevision; }
 
@@ -223,7 +226,6 @@ public final class EvolvePanel extends JPanel {
                 resourceList.add(Box.createVerticalStrut(12));
             }
             resourceList.add(handoff);
-            resourceList.add(jobs);
             resourceList.add(Box.createVerticalGlue());
             previousResourceIds = resourceIds;
         }
@@ -234,9 +236,21 @@ public final class EvolvePanel extends JPanel {
         handoff.setText(complete ? localizer.text(canStart ? "ui_ready_supported" : "ui_ready", localizer.text("race_" + snapshot.species()),
                 localizer.text("genelab_genus_" + snapshot.genus())) : "");
         jobs.setVisible(!snapshot.jobs().isEmpty());
-        jobs.setText(snapshot.jobs().isEmpty() ? "" : localizer.text("ui_jobs") + "\n" + snapshot.jobs().stream()
-                .map(job -> localizer.text("ui_job_workers", localizer.text(job.name()), job.workers()))
-                .collect(java.util.stream.Collectors.joining("\n")));
+        jobTitle.setText(localizer.text("ui_jobs"));
+        var jobIds = snapshot.jobs().stream().map(GameSnapshot.JobView::id).toList();
+        if (!jobIds.equals(previousJobIds)) {
+            jobs.removeAll();
+            jobRows.clear();
+            jobs.add(jobTitle);
+            for (var job : snapshot.jobs()) {
+                var row = new JobRow(job);
+                jobRows.put(job.id(), row);
+                jobs.add(row.panel);
+            }
+            previousJobIds = jobIds;
+        }
+        int available = snapshot.jobs().stream().filter(GameSnapshot.JobView::defaultJob).mapToInt(GameSnapshot.JobView::workers).sum();
+        for (var job : snapshot.jobs()) jobRows.get(job.id()).update(job, available, snapshot.paused());
 
         List<String> ids = snapshot.actions().stream().map(GameSnapshot.ActionView::id).toList();
         if (!ids.equals(previousActionIds)) {
@@ -286,6 +300,48 @@ public final class EvolvePanel extends JPanel {
 
     private static boolean lockedResource(GameSnapshot snapshot, GameSnapshot.ActionView action) {
         return snapshot.resources().stream().anyMatch(resource -> !resource.visible() && action.costs().containsKey(resource.id()));
+    }
+
+    CommandResult assignJob(String id, int delta) {
+        var result = engine.execute(new GameCommand.AssignJob(id, delta));
+        if (result.status() != CommandResult.Status.OK) status.setText(localizer.text(
+                result.status() == CommandResult.Status.PAUSED ? "ui_paused" : "ui_no_workers"));
+        refresh();
+        return result;
+    }
+
+    private final class JobRow {
+        final JPanel panel = panel(new BorderLayout(10, 0));
+        final JLabel text = label(14, TEXT);
+        final JButton add = button();
+        final JButton remove = button();
+
+        JobRow(GameSnapshot.JobView job) {
+            panel.setBorder(BorderFactory.createEmptyBorder(2, 10, 2, 8));
+            panel.setBackground(SURFACE);
+            panel.add(text, BorderLayout.CENTER);
+            if (!job.defaultJob()) {
+                var controls = EvolvePanel.panel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+                controls.setBackground(SURFACE);
+                remove.setText("−");
+                add.setText("+");
+                remove.addActionListener(event -> assignJob(job.id(), -1));
+                add.addActionListener(event -> assignJob(job.id(), 1));
+                controls.add(remove);
+                controls.add(add);
+                panel.add(controls, BorderLayout.EAST);
+            }
+        }
+
+        void update(GameSnapshot.JobView job, int available, boolean paused) {
+            text.setText(localizer.text("ui_job_workers", localizer.text(job.name()), job.workers()));
+            add.setToolTipText(localizer.text("ui_assign_worker"));
+            remove.setToolTipText(localizer.text("ui_release_worker"));
+            add.getAccessibleContext().setAccessibleName(localizer.text("ui_assign_worker") + ": " + localizer.text(job.name()));
+            remove.getAccessibleContext().setAccessibleName(localizer.text("ui_release_worker") + ": " + localizer.text(job.name()));
+            add.setEnabled(!paused && available > 0 && (job.capacity() == -1 || job.workers() < job.capacity()));
+            remove.setEnabled(!paused && job.workers() > 0);
+        }
     }
 
     private final class ResourceCard {

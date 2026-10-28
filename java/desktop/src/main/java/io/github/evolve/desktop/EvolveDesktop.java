@@ -139,6 +139,59 @@ public final class EvolveDesktop {
         if (panel.engine().exportSave().resources().get("Lumber").amount() != saved.resources().get("Lumber").amount() + 1)
             throw new IllegalStateException("Civilization button used old session");
         render(panel, Path.of("build/preview-civilization.png"), 900);
+        workingSettlementSmokeTest(panel);
+    }
+
+    private static void workingSettlementSmokeTest(EvolvePanel panel) throws Exception {
+        waitFor(panel, "Knowledge", 10);
+        panel.actionButton("tech-agriculture").doClick();
+        panel.act("city-lumber", 100);
+        panel.act("city-stone", 100);
+        panel.act("city-farm", 3);
+        for (int i = 0; i < 3; i++) panel.jobButton("farmer", true).doClick();
+        waitFor(panel, "Knowledge", 45);
+        panel.actionButton("tech-stone_axe").doClick();
+        panel.jobButton("lumberjack", true).doClick();
+        waitFor(panel, "Knowledge", 45);
+        panel.actionButton("tech-mining").doClick();
+        waitFor(panel, "Lumber", 50);
+        panel.actionButton("city-rock_quarry").doClick();
+        panel.jobButton("quarry_worker", true).doClick();
+        waitFor(panel, "Knowledge", 22);
+        waitFor(panel, "Lumber", 10);
+        panel.actionButton("tech-currency").doClick();
+        waitFor(panel, "Money", 44);
+        waitFor(panel, "Lumber", 28);
+        panel.actionButton("city-basic_housing").doClick();
+        waitFor(panel, "Knowledge", 55);
+        panel.actionButton("tech-irrigation").doClick();
+        waitFor(panel, "Lumber", 6);
+        panel.actionButton("city-lumber_yard").doClick();
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        if (panel.engine().exportSave().structures().get("basic_housing") != 6 ||
+                panel.engine().exportSave().civilization().workers().get("farmer") != 3 ||
+                panel.engine().exportSave().civilization().workers().get("lumberjack") != 1 ||
+                panel.engine().exportSave().civilization().workers().get("quarry_worker") != 1)
+            throw new IllegalStateException("Working settlement GUI failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Working settlement save failed");
+        var saved = panel.engine().exportSave();
+        panel.jobButton("lumberjack", false).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Working settlement load failed");
+        panel.jobButton("lumberjack", false).doClick();
+        if (panel.engine().exportSave().civilization().workers().get("lumberjack") != 0)
+            throw new IllegalStateException("Job button used old session");
+        panel.jobButton("lumberjack", true).doClick();
+        render(panel, Path.of("build/preview-jobs.png"), 900);
+    }
+
+    private static void waitFor(EvolvePanel panel, String id, double amount) {
+        for (int ticks = 0; ticks <= 6000; ticks += 5) {
+            if (panel.engine().exportSave().resources().get(id).amount() >= amount) { panel.refresh(); return; }
+            panel.engine().advanceTicks(5);
+        }
+        throw new IllegalStateException("GUI production did not reach " + id + " " + amount);
     }
 
     private static void render(EvolvePanel panel, Path output, int height) throws Exception {

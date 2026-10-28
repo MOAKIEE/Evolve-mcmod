@@ -40,7 +40,7 @@
 | --- | --- |
 | 服务端会话管理 | 决定按玩家、团队或方块保存一局；维护实例生命周期和访问权限 |
 | 服务端 tick | 在实例所属线程调用 `advanceTicks(1)`；不能在 GUI 渲染时推进 |
-| C2S 操作消息 | 仅传稳定 action ID 与重复次数，服务端重新检查权限、解锁和费用 |
+| C2S 操作消息 | 操作为稳定 action ID 与次数，工作为 job ID 与有界增减数量；服务端重新检查权限、解锁、人数和费用 |
 | S2C 数据消息 | 编码 `GameSnapshot`，客户端据此绘制资源、按钮、费用、进度和提示 |
 | Minecraft Screen/Menu | 处理滚动、布局、焦点和按钮，使用快照中的 `enabled()` 控制展示；展示状态不能代替服务端检查 |
 | SavedData/NBT | 保存 `GameSave`；加载时先验证，再在服务器线程建立实例 |
@@ -102,7 +102,21 @@ GameEngine restored = EvolutionEngine.restore(save);
 .\gradlew.bat :core:test :storage-json:test verifyGeneratedResources verifyUpstreamFixtures verifyCivilizationFixtures
 ```
 
-本批按核心/存档与 GUI 两部分分别提交，GUI 完成后补充交互与最终验证记录。
+本批核心与存档提交为 `dd4cc649`（`feat(core): add settlement jobs farming and tax income`）。
+
+### GUI 工作控制与最终验证
+
+工作视图从只读文字改为固定在操作区域下方的工作面板，避免资源列表变长后需要先滚动到底才能分配。新职业随快照解锁，每行显示实时人数和分配/撤回按钮，闲置人口单独显示。按钮按暂停、可调配人数及当前职业人数禁用，操作仍只发送 `AssignJob`，核心重新校验。按钮提示已本地化，无障碍名称包含职业名，读档后使用当前实例。
+
+补齐新增科技、建筑及职业的中英文文本；测试遍历完整已支持科技/建筑流程检查翻译 key。GUI 合约测试覆盖没有闲置人口、撤回零人、暂停禁用、保存/读取后分配与坏档保留；smoke test 用真实按钮从交接点完成农业、三农民、一伐木工、一采石工、货币税收、第六间住房和灌溉，再验证工作存档与读档后的按钮绑定。
+
+新增 `desktop/build/preview-jobs.png` 展示工作聚落；与演化、文明起步两张预览一起渲染并目视检查，构建产物不提交。Minecraft Screen、网络协议和 NBT/宿主注册仍未接入。
+
+本批最终检查：构建、生成资源、两套原版场景校验与三个 GUI 场景通过；JUnit 621 项，零失败、零错误。
+
+```powershell
+.\gradlew.bat build verifyGeneratedResources verifyUpstreamFixtures verifyCivilizationFixtures :desktop:smokeTest
+```
 
 ## 原始文明起步批次（历史记录）
 

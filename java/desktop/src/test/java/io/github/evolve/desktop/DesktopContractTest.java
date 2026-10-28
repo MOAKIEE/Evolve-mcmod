@@ -87,6 +87,61 @@ class DesktopContractTest {
         game.execute(new GameCommand.Action("tech-housing"));
         game.execute(new GameCommand.Action("city-basic_housing"));
         translated(game.snapshot());
+        for (String tech : java.util.List.of("agriculture", "stone_axe", "mining", "currency", "irrigation")) {
+            for (String id : java.util.List.of("Lumber", "Stone", "Food")) game.execute(new GameCommand.Action("city-" + id.toLowerCase(), 100));
+            game.advanceTicks(1200);
+            assertEquals(io.github.evolve.core.CommandResult.Status.OK, game.execute(new GameCommand.Action("tech-" + tech)).status());
+            translated(game.snapshot());
+        }
+        for (String building : java.util.List.of("farm", "lumber_yard", "rock_quarry")) {
+            game.execute(new GameCommand.Action("city-lumber", 100));
+            game.execute(new GameCommand.Action("city-stone", 100));
+            assertEquals(io.github.evolve.core.CommandResult.Status.OK, game.execute(new GameCommand.Action("city-" + building)).status());
+            translated(game.snapshot());
+        }
+    }
+
+    @Test
+    void jobButtonsRecheckWorkforcePauseAndRestoredSession() throws Exception {
+        SwingUtilities.invokeAndWait(() -> {
+            var store = new MemoryStore();
+            var panel = new EvolvePanel(EvolutionEngine.restore(EvolveDesktop.civilizationHandoffForSmoke()), store, "en_us");
+            panel.act("civilization-start", 1);
+            panel.act("city-lumber", 5);
+            panel.act("tech-club", 1);
+            panel.act("city-food", 10);
+            panel.act("tech-bone_tools", 1);
+            panel.act("city-lumber", 38);
+            panel.act("city-stone", 30);
+            panel.act("tech-sundial", 1);
+            panel.engine().advanceTicks(1100);
+            panel.act("tech-housing", 1);
+            panel.act("tech-stone_axe", 1);
+            assertFalse(panel.jobButton("lumberjack", true).isEnabled());
+            panel.act("city-basic_housing", 1);
+            panel.act("city-food", 100);
+            for (int i = 0; i < 5; i++) panel.tick();
+            assertTrue(panel.jobButton("lumberjack", true).isEnabled());
+            assertFalse(panel.jobButton("lumberjack", false).isEnabled());
+            panel.jobButton("lumberjack", true).doClick();
+            assertEquals(1, panel.engine().exportSave().civilization().workers().get("lumberjack"));
+            assertFalse(panel.jobButton("lumberjack", true).isEnabled());
+            assertTrue(panel.saveGame());
+            panel.engine().execute(new GameCommand.Pause(true));
+            panel.refresh();
+            assertFalse(panel.jobButton("lumberjack", false).isEnabled());
+            panel.jobButton("lumberjack", false).doClick();
+            assertEquals(1, panel.engine().exportSave().civilization().workers().get("lumberjack"));
+            panel.loadGame();
+            panel.jobButton("lumberjack", false).doClick();
+            assertEquals(0, panel.engine().exportSave().civilization().workers().get("lumberjack"));
+            panel.jobButton("lumberjack", true).doClick();
+            assertEquals(1, panel.engine().exportSave().civilization().workers().get("lumberjack"));
+            var before = panel.engine().exportSave();
+            store.broken = true;
+            panel.loadGame();
+            assertEquals(before, panel.engine().exportSave());
+        });
     }
 
     private static void translated(GameSnapshot snapshot) {
