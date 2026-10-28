@@ -528,7 +528,29 @@ class JsonPersistenceTest {
         restored.advanceTicks(18);
         assertEquals(original.exportSave(), restored.exportSave());
         assertEquals(-1, restored.exportSave().resources().get("Brick").capacity());
+        var apprentices = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+        apprentices.getAsJsonObject("technologies").addProperty("foundry", 3);
+        for (String field : java.util.List.of("workers", "assigned")) {
+            apprentices.getAsJsonObject("civilization").getAsJsonObject(field).addProperty("craft_Plywood", 2);
+            apprentices.getAsJsonObject("civilization").getAsJsonObject(field).addProperty("craft_Brick", 0);
+        }
+        apprentices.getAsJsonObject("resources").getAsJsonObject("Lumber").addProperty("amount", 0.8);
+        var upgraded = codec.decode(apprentices.toString());
+        var upgradedGame = EvolutionEngine.restore(upgraded);
+        upgradedGame.advanceTicks(5);
+        assertEquals(1.09 / 140, upgradedGame.exportSave().resources().get("Plywood").changePerSecond(), 1e-12);
+        assertEquals(upgraded, codec.decode(codec.encode(upgraded)));
+        apprentices.getAsJsonObject("technologies").addProperty("foundry", 4);
+        assertThrows(SaveFormatException.class, () -> codec.decode(apprentices.toString()));
+        apprentices.getAsJsonObject("technologies").addProperty("saw", 1);
+        apprentices.getAsJsonObject("technologies").addProperty("axe", 1);
+        apprentices.getAsJsonObject("structures").addProperty("sawmill", 0);
+        apprentices.getAsJsonObject("structures").addProperty("lumber_yard", 0);
+        upgraded = codec.decode(apprentices.toString());
+        assertEquals(upgraded, codec.decode(codec.encode(upgraded)));
         for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 13),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/library-1"),
                 root -> root.addProperty("schemaVersion", 10),
                 root -> root.addProperty("ruleset", "evolve-1.4.10/farm-storage-1"),
                 root -> root.getAsJsonObject("resources").remove("Brick"),

@@ -548,6 +548,36 @@ public final class EvolveDesktop {
         if (Math.abs(panel.engine().exportSave().resources().get("Knowledge").capacity() - (100 + universities * 520d + 250)) > 1e-9)
             throw new IllegalStateException("Research grant capacity failed");
         render(panel, Path.of("build/preview-library.png"), 1660);
+        carpentrySmokeTest(panel);
+    }
+
+    private static void carpentrySmokeTest(EvolvePanel panel) throws Exception {
+        buyWithStorage(panel, "tech-apprentices");
+        while (panel.engine().exportSave().resources().get("Knowledge").capacity() < 5200) {
+            buyWithStorage(panel, "city-library");
+            panel.engine().advanceTicks(20);
+        }
+        buyWithStorage(panel, "tech-carpentry");
+        for (int i = 0; i < 3; i++) panel.jobButton("craft_Plywood", true).doClick();
+        if (panel.engine().exportSave().civilization().workers().get("craft_Plywood") != 3)
+            throw new IllegalStateException("Apprentices were not assigned");
+        waitFor(panel, "Lumber", 110);
+        double before = panel.engine().exportSave().resources().get("Plywood").amount();
+        panel.actionButton("craft-Plywood").doClick();
+        double ratio = 1 + 3 * 0.03 + 2 * 0.03 + panel.engine().exportSave().structures().get("sawmill") * 0.02;
+        if (Math.abs(panel.engine().exportSave().resources().get("Plywood").amount() - before - ratio) > 1e-9)
+            throw new IllegalStateException("Carpentry manual bonus failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Carpentry save failed");
+        var saved = panel.engine().exportSave();
+        panel.jobButton("craft_Plywood", false).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Loading changed crafting upgrades");
+        panel.jobButton("craft_Plywood", false).doClick();
+        panel.engine().advanceTicks(5);
+        panel.refresh();
+        if (Math.abs(panel.engine().exportSave().resources().get("Plywood").changePerSecond() - (ratio - 0.03) * 2 / 140) > 1e-9)
+            throw new IllegalStateException("Apprentice controls used the previous session");
+        render(panel, Path.of("build/preview-carpentry.png"), 1660);
     }
 
     private static void alignMidLoop(EvolvePanel panel) {

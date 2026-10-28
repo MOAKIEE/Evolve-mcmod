@@ -448,7 +448,8 @@ public final class EvolutionEngine implements GameEngine {
         if (!Double.isFinite(impact) || impact != 0.5 && (science < 3 || impact != 0.5 + libraries * 0.01))
             throw new IllegalArgumentException("Invalid professor impact");
         if (save.structures().containsKey("foundry") != save.technologies().containsKey("foundry") ||
-                save.technologies().containsKey("foundry") && mining < 2 || foundries > 0 && mines == 0)
+                save.technologies().containsKey("foundry") && mining < 2 || foundries > 0 && mines == 0 ||
+                save.technologies().getOrDefault("foundry", 0) >= 4 && !save.technologies().containsKey("saw"))
             throw new IllegalArgumentException("Missing foundry prerequisite");
         for (var recipe : CraftingRules.RECIPES) {
             boolean visible = foundries > 0 && (!recipe.resource().equals("Wrought_Iron") || mining >= 3);

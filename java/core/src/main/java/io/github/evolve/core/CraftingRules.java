@@ -28,7 +28,13 @@ final class CraftingRules {
         return (int) Math.round(recipe.cost() * (state.traits.get("wasteful") == 0.5 ? 1.12 : 1.10));
     }
 
-    static double ratio(EvolutionState state) { return 1 + (state.tech("foundry") >= 2 ? state.count("foundry") * 0.03 : 0); }
+    static double ratio(EvolutionState state, Recipe recipe) {
+        double ratio = 1;
+        if (state.tech("foundry") >= 2) ratio += state.count("foundry") * 0.03;
+        if (state.tech("foundry") >= 3) ratio += Math.max(0, state.civilization.workers().get(recipe.job()) - 1) * 0.03;
+        if (state.tech("foundry") >= 4 && recipe.resource().equals("Plywood")) ratio += state.count("sawmill") * 0.02;
+        return ratio;
+    }
 
     static void install(Map<String, CivilizationRules.Rule> rules) {
         for (var recipe : RECIPES) {
@@ -36,8 +42,8 @@ final class CraftingRules {
             rules.put(id, new CivilizationRules.Rule(id, "crafting", "ui_craft_" + recipe.resource(),
                     s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.count("foundry") > 0 && s.resources.get(recipe.resource()).visible,
                     s -> Map.of(recipe.ingredient(), (double) cost(s, recipe)),
-                    s -> s.resources.get(recipe.resource()).addCapped(ratio(s)),
-                    s -> List.of(TextRef.of("ui_craft_output", ratio(s))), null, recipe.resource()));
+                    s -> s.resources.get(recipe.resource()).addCapped(ratio(s, recipe)),
+                    s -> List.of(TextRef.of("ui_craft_output", ratio(s, recipe))), null, recipe.resource()));
         }
     }
 
@@ -51,7 +57,7 @@ final class CraftingRules {
             ingredient.addCapped(-consume * 0.25);
             ingredient.rate -= consume;
             var output = state.resources.get(recipe.resource());
-            output.rate = ratio(state) * count / 140d;
+            output.rate = ratio(state, recipe) * count / 140d;
             output.addCapped(output.rate * 0.25);
         }
     }

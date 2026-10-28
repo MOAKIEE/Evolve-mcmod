@@ -22,7 +22,7 @@ final class CivilizationRules {
     static final Map<String, Integer> TECH_MAX = Map.ofEntries(Map.entry("primitive", 3), Map.entry("housing", 1),
             Map.entry("agriculture", 2), Map.entry("currency", 1), Map.entry("axe", 3), Map.entry("mining", 3),
             Map.entry("storage", 2), Map.entry("science", 4), Map.entry("banking", 2), Map.entry("pickaxe", 2), Map.entry("smelting", 1),
-            Map.entry("cement", 1), Map.entry("saw", 1), Map.entry("farm", 1), Map.entry("foundry", 2), Map.entry("military", 1));
+            Map.entry("cement", 1), Map.entry("saw", 1), Map.entry("farm", 1), Map.entry("foundry", 4), Map.entry("military", 1));
     static final Map<String, Rule> ALL = build();
 
     private CivilizationRules() {}
@@ -270,6 +270,8 @@ final class CivilizationRules {
                 Map.of("Money", 3750d, "Knowledge", 2550d, "Iron", 750d, "Cement", 500d), s -> {});
         research(rules, "foundry", Map.of("mining", 2), "foundry", 1, Map.of("Knowledge", 650d), s -> s.structures.put("foundry", 0));
         research(rules, "artisans", Map.of("foundry", 1), "foundry", 2, Map.of("Knowledge", 1500d), s -> {});
+        research(rules, "apprentices", Map.of("foundry", 2), "foundry", 3, Map.of("Knowledge", 3200d), s -> {});
+        research(rules, "carpentry", Map.of("foundry", 3, "saw", 1), "foundry", 4, Map.of("Knowledge", 5200d), s -> {});
         research(rules, "garrison", Map.of("science", 1, "housing", 1), "military", 1, Map.of("Knowledge", 70d), s -> s.structures.put("garrison", 0));
         research(rules, "library", Map.of("science", 1, "cement", 1), "science", 2, Map.of("Knowledge", 720d), s -> s.structures.put("library", 0));
         research(rules, "thesis", Map.of("science", 2), "science", 3, Map.of("Knowledge", 1125d), s -> {});
@@ -432,6 +434,6 @@ final class CivilizationRules {
         rules.put(actionId, new Rule(actionId, "research", "tech_" + id,
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && requirements.entrySet().stream().allMatch(e -> s.tech(e.getKey()) >= e.getValue()) && s.tech(grant) < rank,
                 s -> costs, s -> { extra.accept(s); s.grant(grant, rank); },
-                s -> List.of(TextRef.of("tech_" + id + (id.equals("foundry") || id.equals("artisans") ? "_effect" : "_desc"))), null, null));
+                s -> List.of(TextRef.of("tech_" + id + (Set.of("foundry", "artisans", "apprentices", "carpentry").contains(id) ? "_effect" : "_desc"))), null, null));
     }
 }
