@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const crypto = require('node:crypto');
 const root = path.resolve(__dirname, '../..');
 const read = name => fs.readFileSync(path.join(root, name), 'utf8').replace(/\r\n/g, '\n');
-const files = ['src/actions.js', 'src/tech.js', 'src/main.js', 'src/functions.js', 'src/resources.js', 'src/races.js', 'src/vars.js', 'src/space.js', 'src/jobs.js', 'src/industry.js'];
+const files = ['src/actions.js', 'src/tech.js', 'src/main.js', 'src/functions.js', 'src/resources.js', 'src/races.js', 'src/vars.js', 'src/space.js', 'src/jobs.js', 'src/industry.js', 'src/civics.js'];
 const sources = Object.fromEntries(files.map(file => [file, read(file)]));
 function fn(file, name) {
     const source = sources[`src/${file}.js`];
@@ -31,11 +31,11 @@ function section(start, end) {
     return source.slice(a, b);
 }
 const craftResources = ['Plywood', 'Brick', 'Wrought_Iron'];
-const resourceIds = ['RNA', 'DNA', 'Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron', 'Cement', ...craftResources, 'human'];
+const resourceIds = ['RNA', 'DNA', 'Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron', 'Cement', 'Furs', ...craftResources, 'human'];
 const traitIds = ['adaptable', 'wasteful', 'creative', 'diverse'];
-const structureIds = ['basic_housing', 'farm', 'lumber_yard', 'rock_quarry', 'shed', 'university', 'bank', 'mine', 'smelter', 'cement_plant', 'sawmill', 'foundry'];
+const structureIds = ['basic_housing', 'farm', 'lumber_yard', 'rock_quarry', 'shed', 'university', 'bank', 'mine', 'smelter', 'cement_plant', 'sawmill', 'foundry', 'garrison'];
 const cityIds = ['food', 'lumber', 'stone', ...structureIds];
-const techIds = ['club', 'bone_tools', 'sundial', 'housing', 'agriculture', 'irrigation', 'currency', 'stone_axe', 'mining', 'storage', 'science', 'banking', 'investing', 'metal_working', 'copper_axes', 'copper_pickaxe', 'iron_mining', 'iron_axes', 'iron_pickaxe', 'smelting', 'cement', 'iron_saw', 'farm_house', 'reinforced_shed', 'foundry', 'artisans'];
+const techIds = ['club', 'bone_tools', 'sundial', 'housing', 'agriculture', 'irrigation', 'currency', 'stone_axe', 'mining', 'storage', 'science', 'banking', 'investing', 'metal_working', 'copper_axes', 'copper_pickaxe', 'iron_mining', 'iron_axes', 'iron_pickaxe', 'smelting', 'cement', 'iron_saw', 'farm_house', 'reinforced_shed', 'foundry', 'artisans', 'garrison'];
 const jobIds = ['farmer', 'lumberjack', 'quarry_worker', 'miner', ...craftResources.map(r => `craft_${r}`), 'cement_worker', 'professor', 'banker'];
 const fresh = { biome: 'grassland', universe: 'standard', seeded: false, rapidMutation: false,
     massExtinction: 0, novice: 0, master: 0, grandmaster: 0, unbound: 0, obsolete: 0,
@@ -46,10 +46,10 @@ function environment(primary = true, multiplier = 1) {
     const g = { race: { species: 'human', universe: 'standard' },
         resource: { RNA: { amount: 300, max: 500, display: true, delta: 0 }, DNA: { amount: 300, max: 500, display: true, delta: 0 } },
         tech: { evo: 7, evo_humanoid: primary ? 2 : 1 }, evolution: {}, city: { biome: 'grassland', ptrait: [], geology: {}, calendar: { day: 0 } },
-        civic: { govern: {}, foreign: { gov0: {}, gov1: {}, gov2: {} }, garrison: { workers: 0 }, homeless: 0, taxes: { tax_rate: 20 } },
+        civic: { govern: {}, foreign: { gov0: {}, gov1: {}, gov2: {} }, garrison: { workers: 0, progress: 0, rate: 0, max: 0, wounded: 0, crew: 0, display: false }, homeless: 0, taxes: { tax_rate: 20 } },
         stats: { achieve: {}, feat: {}, starved: 0, cfood: 0, tfood: 0, clumber: 0, tlumber: 0, cstone: 0, tstone: 0, know: 0 },
         genes: { minor: {} }, blood: {}, prestige: { Plasmid: { count: 0 } }, portal: {}, space: {}, interstellar: {}, galaxy: {}, tauceti: {}, arpa: {}, eden: {},
-        settings: { boring: true, mtorder: [], tabLoad: false, pause: false }, queue: {}, seed: 2 };
+        settings: { boring: true, mtorder: [], tabLoad: false, pause: false, msgFilters: { combat: {} } }, queue: {}, seed: 2 };
     const temporary = { resource: {} };
     let names = 0;
     let loops = 0;
@@ -65,7 +65,7 @@ function environment(primary = true, multiplier = 1) {
         defineIndustry: () => {},
         checkAltPurgatory: (region, id, alternate, value) => { g[region][id] = structuredClone(value); },
         eventActive: type => type === 'summer' ? false : ({ active: false }), getHalloween: () => ({ active: false }),
-        clearElement: () => {}, registerTech: () => {}, addAction: () => {},
+        clearElement: () => {}, registerTech: () => {}, addAction: () => {}, vBind: () => {},
         genCivName: () => ({ s0: names++, s1: 'fixture' }),
         messageQueue: () => {}, flib: () => 'human', calcPillar: () => {}, commisionGarrison: () => {},
         defineGovernment: () => {}, calc_mastery: () => {}, altRace: () => {}, tagEvent: () => {}, alevel: () => 1,
@@ -81,7 +81,8 @@ function environment(primary = true, multiplier = 1) {
     const functions = [fn('vars', 'seededRandom'), fn('functions', 'costMultiplier'), fn('functions', 'modRes'),
         fn('actions', 'payCosts'), fn('actions', 'checkCosts'), fn('actions', 'initStruct'), fn('actions', 'bank_vault'), fn('actions', 'dirt_adjust'), fn('actions', 'storageMultipler'), fn('space', 'incrementStruct'),
         fn('races', 'setTraitRank'), fn('races', 'combineTraits'), fn('resources', 'defineResources'),
-        fn('jobs', 'defineJobs'), fn('jobs', 'farmerValue'), fn('jobs', 'jobScale'), fn('actions', 'sentience'), adjustments].join('\n');
+        fn('jobs', 'defineJobs'), fn('jobs', 'farmerValue'), fn('jobs', 'jobScale'), fn('actions', 'sentience'),
+        fn('civics', 'weaponTechModifer'), fn('civics', 'armyRating'), fn('civics', 'garrisonSize'), adjustments].join('\n');
     const industryFunctions = ['smelterFuelConfig', 'smelterUnlocked', 'addSmelter'].map(name => fn('industry', name)).join('\n');
     const smelterSource = fn('industry', 'loadSmelter');
     const smelterMethods = smelterSource.slice(smelterSource.indexOf('            addFuel(type){'), smelterSource.indexOf('            buildLabel(type){'));
@@ -92,7 +93,7 @@ function environment(primary = true, multiplier = 1) {
     const resourceSource = fn('resources', 'loadResource');
     const manualMethod = resourceSource.slice(resourceSource.indexOf('            craft(res,vol){'), resourceSource.indexOf('            craftCost(res,vol){'));
     const ratioSource = sources['src/resources.js'].slice(sources['src/resources.js'].indexOf('export const craftingRatio ='), sources['src/resources.js'].indexOf('export function initResourceTabs')).replace('export const', 'const');
-    const craftingFunctions = `${fn('resources', 'craftCost')}\n${ratioSource}\nvar traits = {${block('races', 'wasteful', 4)}};`;
+    const craftingFunctions = `${fn('resources', 'craftCost')}\n${ratioSource}\nvar traits = {${block('races', 'wasteful', 4)}${block('races', 'diverse', 4)}};`;
     const midSource = fn('main', 'midLoop');
     const midBase = midSource.slice(midSource.indexOf('        var caps = {', midSource.indexOf('        // Resource caps')), midSource.indexOf('        var lCaps ='));
     const midStorage = midSource.slice(midSource.indexOf("        if (global.city['rock_quarry']){"), midSource.indexOf("        else if (global.city['graveyard']){"));
@@ -115,6 +116,7 @@ function environment(primary = true, multiplier = 1) {
             ${section('        // Consumption\n', '        // Fortress Repair\n')}
             ${section('        // Citizen Growth\n', "        if (global.space['shipyard']")}
             let hunger = fed ? 1 : .5;
+            ${section('        // Furs\n', "        if (global.resource.Furs.display && global.tech['isolation']")}
             ${section('        // Knowledge\n', '        // Omniscience\n')}
             ${section('        // Cement\n', '        let shrineMetal =')}
             const shrineMetal = { mult: 1 };
@@ -126,6 +128,7 @@ function environment(primary = true, multiplier = 1) {
             const FactoryMoney = 0;
             ${section('        // Income\n', "        if (global.tech['gambling']")}
             ${section('        // Crafting\n', '        // Detect new unlocks\n')}
+            ${section("    if (global.civic['garrison'] && global.civic.garrison.workers < global.civic.garrison.max){", '    // carport repair\n')}
         }
         function mid() {
             ${midBase}
@@ -138,7 +141,7 @@ function environment(primary = true, multiplier = 1) {
             caps[global.race.species] = 0;
             ${farmCaps}
             ${housingCaps}
-            for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron', 'Cement', 'human']) global.resource[id].max = caps[id];
+            for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron', 'Cement', 'Furs', 'human']) global.resource[id].max = caps[id];
             global.resource.human.display = caps.human > 0;
             global.civic.professor.max = lCaps.professor;
             global.civic.banker.max = jobScale(global.city.bank?.count || 0);
@@ -230,6 +233,7 @@ function environment(primary = true, multiplier = 1) {
             unemployed: g.civic.unemployed.workers, workers: Object.fromEntries(jobIds.map(id => [id, jobWorkers(id)])),
             assigned: Object.fromEntries(jobIds.map(id => [id, id.startsWith('craft_') ? jobWorkers(id) : g.civic[id].assigned])),
             smelter: { wood: g.city.smelter?.Wood || 0, iron: g.city.smelter?.Iron || 0 },
+            garrison: { soldiers: g.civic.garrison.workers, trainingProgress: g.civic.garrison.progress, trainingRate: g.civic.garrison.rate },
             capacitiesInitialized,
             available: Object.entries({ ...Object.fromEntries(cityIds.map(id => [`city-${id}`, sandbox.actions.city[id]])),
                 ...Object.fromEntries(techIds.map(id => [`tech-${id}`, sandbox.actions.tech[id]])) }).filter(([, rule]) => visible(rule))
@@ -240,11 +244,11 @@ function environment(primary = true, multiplier = 1) {
     }
     function save() {
         const data = view();
-        return { schemaVersion: 11, ruleset: 'evolve-1.4.10/crafting-1', elapsedTicks: 0, revision: 0, tickRemainder: 0, loopCycle: 0,
+        return { schemaVersion: 12, ruleset: 'evolve-1.4.10/garrison-1', elapsedTicks: 0, revision: 0, tickRemainder: 0, loopCycle: 0,
             paused: false, phase: 'PRIMITIVE', randomSeed: g.seed, species: 'human', genus: 'humanoid', progress: 100,
             context: { ...fresh, productionMultiplier: multiplier }, resources: data.resources, structures: data.structures,
             technologies: data.technologies, traits: data.traits, civilization: { primaryGenus: primary ? 'humanoid' : '',
-                unemployed: g.civic.unemployed.workers, workers: data.workers, assigned: data.assigned, capacitiesInitialized, smelter: data.smelter } };
+                unemployed: g.civic.unemployed.workers, workers: data.workers, assigned: data.assigned, capacitiesInitialized, smelter: data.smelter, garrison: data.garrison } };
     }
     return { g, act, fast, view, save,
         mid: () => { vm.runInContext('mid()', context, { timeout: 1000 }); capacitiesInitialized = true; },
@@ -304,7 +308,7 @@ function settlement(options = {}) {
         metalWorking = false, mines = 0, copperAxes = false, copperPickaxe = false,
         ironMining = false, ironAxes = false, ironPickaxe = false,
         smelting = false, smelters = 0,
-        cement = false, cementPlants = 0, ironSaw = false, sawmills = 0, farmHouse = false, reinforcedShed = false, upgradedSheds = 0, foundries = 0, foundry = false, artisans = false,
+        cement = false, cementPlants = 0, ironSaw = false, sawmills = 0, farmHouse = false, reinforcedShed = false, upgradedSheds = 0, foundries = 0, foundry = false, artisans = false, military = false, garrisons = 0,
         irrigated = false, multiplier = 1, currency = true, primary = true } = options;
     const env = prepare(4, 0, primary, multiplier);
     function buy(id) {
@@ -348,6 +352,8 @@ function settlement(options = {}) {
     if (foundries > 0) env.mid();
     for (let i = 0; i < foundries; i++) buy('city-foundry');
     if (artisans) buy('tech-artisans');
+    if (military || garrisons > 0) buy('tech-garrison');
+    for (let i = 0; i < garrisons; i++) buy('city-garrison');
     for (const resource of Object.values(env.g.resource)) resource.amount = 0;
     return env;
 }
@@ -374,10 +380,14 @@ for (const options of [{}, { farms: 0, yards: 0, quarries: 0 }, { houses: 10, fa
     { sheds: 5, universities: 3, banks: 2, mines: 1, foundries: 1 },
     { sheds: 5, universities: 3, banks: 2, mines: 1, foundries: 3, artisans: true },
     { sheds: 8, universities: 5, banks: 2, mines: 1, ironMining: true, cementPlants: 1, foundries: 3, artisans: true },
-    { sheds: 8, universities: 5, banks: 2, mines: 1, ironMining: true, cementPlants: 1, foundries: 3, artisans: true, primary: false }]) {
+    { sheds: 8, universities: 5, banks: 2, mines: 1, ironMining: true, cementPlants: 1, foundries: 3, artisans: true, primary: false },
+    { sheds: 1, universities: 1, military: true },
+    { sheds: 1, universities: 1, garrisons: 1 },
+    { sheds: 2, universities: 1, garrisons: 2 },
+    { sheds: 10, universities: 5, banks: 3, mines: 1, ironMining: true, cementPlants: 1, reinforcedShed: true, garrisons: 1 }]) {
     const env = settlement(options);
     function fund(next) {
-        for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron', 'Cement'])
+        for (const id of ['Food', 'Lumber', 'Stone', 'Knowledge', 'Money', 'Copper', 'Iron', 'Cement', 'Furs'])
             if (next.g.resource[id].display) next.g.resource[id].amount = Math.max(0, next.g.resource[id].max - 10);
     }
     fund(env);
@@ -423,6 +433,11 @@ for (const options of [
     ...[0, 110 / 140 - 1e-9, 110 / 140, 100].map(lumber => ({ population: 8, farmers: 3, lumberjacks: 0, quarriers: 1, craftPlywood: 2, sheds: 5, universities: 3, banks: 2, mines: 1, foundries: 3, artisans: true, lumber, food: 100, seed: 2 })),
     { population: 8, farmers: 3, lumberjacks: 1, quarriers: 1, craftBrick: 1, craftIron: 1, sheds: 8, universities: 5, banks: 2, mines: 1, ironMining: true, cementPlants: 1, foundries: 3, artisans: true, cementInput: 10, ironInput: 10, food: 100, seed: 2, multiplier: 1.375 },
     { population: 8, farmers: 0, lumberjacks: 0, quarriers: 0, craftPlywood: 2, craftBrick: 1, craftIron: 1, sheds: 8, universities: 5, banks: 2, mines: 1, ironMining: true, cementPlants: 1, foundries: 4, artisans: true, lumber: 100, cementInput: 10, ironInput: 10, food: 0, seed: 20, multiplier: 0.1, primary: false },
+    { population: 8, farmers: 3, lumberjacks: 1, quarriers: 1, sheds: 1, universities: 1, garrisons: 1, food: 100, seed: 2 },
+    { population: 8, farmers: 3, lumberjacks: 1, quarriers: 1, sheds: 1, universities: 1, garrisons: 1, soldiers: 0, trainingProgress: 99.5, food: 100, seed: 2 },
+    { population: 8, farmers: 3, lumberjacks: 1, quarriers: 1, sheds: 1, universities: 1, garrisons: 1, soldiers: 1, trainingProgress: 99.5, food: 100, seed: 2 },
+    { population: 8, farmers: 0, lumberjacks: 2, quarriers: 2, sheds: 2, universities: 1, garrisons: 2, soldiers: 4, food: 0, seed: 1, multiplier: 1.375 },
+    { population: 0, farmers: 0, lumberjacks: 0, quarriers: 0, sheds: 1, universities: 1, garrisons: 1, soldiers: 2, food: 100, seed: 2 },
 ]) {
     const env = settlement(options);
     const { population, farmers, lumberjacks, quarriers, food, seed } = options;
@@ -433,6 +448,9 @@ for (const options of [
     if (options.cementInput !== undefined) env.g.resource.Cement.amount = options.cementInput;
     if (options.ironInput !== undefined) env.g.resource.Iron.amount = options.ironInput;
     if (options.ironSlots !== undefined) env.g.city.smelter.Iron = options.ironSlots;
+    if (options.soldiers !== undefined) env.g.civic.garrison.workers = options.soldiers;
+    if (options.soldiers > 0 || options.trainingProgress !== undefined) env.g.civic.garrison.rate = 0.5;
+    if (options.trainingProgress !== undefined) env.g.civic.garrison.progress = options.trainingProgress;
     env.g.seed = seed;
     env.g.civic.unemployed.workers = population;
     env.assign('farmer', farmers);
@@ -498,7 +516,7 @@ for (const [id, delta, wood, iron] of [['Wood', 100, 0, 0], ['Wood', -1, 2, 0], 
 }
 const result = {
     provenance: files.map(file => ({ file, sha256: crypto.createHash('sha256').update(sources[file]).digest('hex') })),
-    boundary: 'Human/grassland/standard only. Executes original sentience, resource defaults, selected tech/building actions and costs including sheds/universities/banks/mines/smelters/cement plants/sawmills/foundries, investing, iron mining and copper/iron axes/pickaxes/iron saws, job add/sub and finite-job refill, farmerValue, food/growth/knowledge/lumber/stone/miner/income blocks and base/storage/university/bank/farm housing midLoop caps with original bank_vault and storageMultipler. Farm housing adds one citizen capacity per farm; research applies to existing farms at the next midLoop and subsequent farms apply immediately. Reinforced sheds multiply base storage by 2.25, rounding each per-shed amount before multiplying the count; existing sheds upgrade at the next midLoop, subsequent sheds use upgraded capacity immediately. Neutral spatialReasoning rounds values with no prestige modifier. Miner, professor and banker capacity is one per matching building; assigned targets survive deaths. Cement workers have two positions per plant, consume 3 stone/s before quarry production and produce 0.4 cement/s with hunger and host multipliers applied only to output. Sawmills add 200 lumber capacity and 5% lumber production each. Copper, iron and cement start at 100 capacity; previously built sheds apply only at the next midLoop after material unlock, new sheds apply immediately. Upgraded iron-tool setups execute original midLoop during preparation to apply existing sheds before funding the iron costs. Investing grants a fed-only 10% tax bonus per banker, with original per-fastLoop rounding. Wood smelting executes original industry add/sub controls, fuel configuration and complete smelter fastLoop block before lumber production: 3 lumber/s per operable fuel slot, one iron slot refilled per fastLoop, 10% iron multiplier per effective slot; coal/oil/steel remain locked. Fixture setup rejects failed purchases and builds initial sheds then banks before remaining sheds. Foundries execute original craftCost, full craftingRatio, manual craft method, craftsman add/sub and complete fastLoop crafting block for plywood, brick and wrought iron. Wasteful rank 1/0.5 input costs and artisans bonuses apply; craftsmen share the foundry count, have no refill targets and map to per-recipe host job IDs. Crafted resources use original capacity -1 and are not clamped. Neutral weather, empty geology, tax rate 20, no power, alternative fuels, steel, prestige, events, government, default-job switching or other jobs. Host multiplier is supplied explicitly, Math.random uses persisted seededRandom. Host normalizes workforce at the atomic tick boundary, releasing unemployed then jobs in reverse order after deaths; original delayed labor-anomaly repair is outside this fixture.',
+    boundary: 'Human/grassland/standard only. Executes original sentience, resource defaults, selected tech/building actions and costs including sheds/universities/banks/mines/smelters/cement plants/sawmills/foundries, investing, iron mining and copper/iron axes/pickaxes/iron saws, job add/sub and finite-job refill, farmerValue, food/growth/knowledge/lumber/stone/miner/income blocks and base/storage/university/bank/farm housing midLoop caps with original bank_vault and storageMultipler. Farm housing adds one citizen capacity per farm; research applies to existing farms at the next midLoop and subsequent farms apply immediately. Reinforced sheds multiply base storage by 2.25, rounding each per-shed amount before multiplying the count; existing sheds upgrade at the next midLoop, subsequent sheds use upgraded capacity immediately. Neutral spatialReasoning rounds values with no prestige modifier. Miner, professor and banker capacity is one per matching building; assigned targets survive deaths. Cement workers have two positions per plant, consume 3 stone/s before quarry production and produce 0.4 cement/s with hunger and host multipliers applied only to output. Sawmills add 200 lumber capacity and 5% lumber production each. Copper, iron and cement start at 100 capacity; previously built sheds apply only at the next midLoop after material unlock, new sheds apply immediately. Upgraded iron-tool setups execute original midLoop during preparation to apply existing sheds before funding the iron costs. Investing grants a fed-only 10% tax bonus per banker, with original per-fastLoop rounding. Wood smelting executes original industry add/sub controls, fuel configuration and complete smelter fastLoop block before lumber production: 3 lumber/s per operable fuel slot, one iron slot refilled per fastLoop, 10% iron multiplier per effective slot; coal/oil/steel remain locked. Fixture setup rejects failed purchases and builds initial sheds then banks before remaining sheds. Foundries execute original craftCost, full craftingRatio, manual craft method, craftsman add/sub and complete fastLoop crafting block for plywood, brick and wrought iron. Wasteful rank 1/0.5 input costs and artisans bonuses apply; craftsmen share the foundry count, have no refill targets and map to per-recipe host job IDs. Crafted resources use original capacity -1 and are not clamped. Garrisons execute original military research/building costs, armyRating, garrisonSize, weaponTechModifer, Furs block and complete training block at the end of each fastLoop. Soldiers train independently of civilians, contribute food hunting, food upkeep and taxes; training completion affects production starting the next fastLoop. Human diverse training rate is 0.5 percentage points per fastLoop. Furs use pending shed capacity and reinforced rounding. All garrisons remain active; no combat, wounds, deployment or recruitment controls. Neutral weather, empty geology, tax rate 20, no power, alternative fuels, steel, prestige, events, government, default-job switching or other jobs. Host multiplier is supplied explicitly, Math.random uses persisted seededRandom. Host normalizes workforce at the atomic tick boundary, releasing unemployed then jobs in reverse order after deaths; original delayed labor-anomaly repair is outside this fixture.',
     initialization, cases, production, assignments, smelterAssignments,
 };
 const output = JSON.stringify(result, null, 2) + '\n';

@@ -471,6 +471,33 @@ public final class EvolveDesktop {
             throw new IllegalStateException("Craftsman button used old session");
         panel.jobButton("craft_Plywood", true).doClick();
         render(panel, Path.of("build/preview-crafting.png"), 1540);
+        garrisonSmokeTest(panel);
+    }
+
+    private static void garrisonSmokeTest(EvolvePanel panel) throws Exception {
+        for (String job : java.util.List.of("craft_Plywood", "craft_Brick", "craft_Wrought_Iron", "cement_worker"))
+            panel.jobButton(job, false).doClick();
+        buyWithStorage(panel, "tech-garrison");
+        buyWithStorage(panel, "city-garrison");
+        if (panel.engine().exportSave().resources().get("Furs").capacity() != 100)
+            throw new IllegalStateException("Fur storage applied before midLoop");
+        panel.engine().advanceTicks(995 - panel.engine().exportSave().tickRemainder());
+        if (panel.engine().snapshot().garrison().soldiers() != 0 || panel.engine().snapshot().garrison().trainingProgress() != 99.5)
+            throw new IllegalStateException("Soldier training boundary failed");
+        if (!panel.saveGame()) throw new IllegalStateException("Training save failed");
+        var saved = panel.engine().exportSave();
+        panel.engine().advanceTicks(5);
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Loading did not restore training progress");
+        panel.engine().advanceTicks(5);
+        if (panel.engine().snapshot().garrison().soldiers() != 1 || panel.engine().exportSave().resources().get("Furs").amount() != 0)
+            throw new IllegalStateException("Training completed before production");
+        panel.engine().advanceTicks(1005);
+        panel.refresh();
+        if (panel.engine().snapshot().garrison().soldiers() != 2 ||
+                Math.abs(panel.engine().exportSave().resources().get("Furs").changePerSecond() - 0.2) > 1e-9)
+            throw new IllegalStateException("Garrison hunting failed");
+        render(panel, Path.of("build/preview-garrison.png"), 1660);
     }
 
     private static void buyWithStorage(EvolvePanel panel, String id) {

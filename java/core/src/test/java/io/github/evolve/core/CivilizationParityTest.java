@@ -112,6 +112,7 @@ class CivilizationParityTest {
         assertEquals(GSON.fromJson(civilization.get("assigned"), new TypeToken<Map<String, Integer>>() {}.getType()), save.civilization().assigned());
         assertEquals(civilization.get("capacitiesInitialized").getAsBoolean(), save.civilization().capacitiesInitialized());
         assertEquals(GSON.fromJson(civilization.get("smelter"), SmelterState.class), save.civilization().smelter());
+        assertEquals(GSON.fromJson(civilization.get("garrison"), GarrisonState.class), save.civilization().garrison());
         if (expected.has("available")) availability(expected.getAsJsonArray("available"), game);
     }
 

@@ -547,6 +547,61 @@ class JsonPersistenceTest {
         }
     }
 
+    @Test
+    void garrisonRoundTripKeepsTrainingBoundaryAndRejectsSoldierOrFurForgeries() {
+        var base = scienceSave();
+        var resources = new LinkedHashMap<>(base.resources());
+        resources.put("Furs", new GameSave.ResourceState(0, 100, true, 0));
+        var structures = new LinkedHashMap<>(base.structures());
+        structures.put("garrison", 1);
+        var tech = new LinkedHashMap<>(base.technologies());
+        tech.put("military", 1);
+        var civ = base.civilization();
+        var save = new GameSave(base.schemaVersion(), base.ruleset(), 0, 0, 0, 0, false, base.phase(), base.randomSeed(),
+                base.species(), base.genus(), base.progress(), base.context(), resources, structures, tech, base.traits(),
+                new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), false, civ.smelter(),
+                        new io.github.evolve.core.GarrisonState(1, 99.5, 0.5)));
+        var original = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        assertEquals(save, restored.exportSave());
+        original.advanceTicks(5);
+        restored.advanceTicks(5);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(2, restored.snapshot().garrison().soldiers());
+        assertEquals(0.025, restored.exportSave().resources().get("Furs").amount(), 1e-12);
+        assertEquals(0, restored.snapshot().garrison().trainingProgress());
+        restored = EvolutionEngine.restore(codec.decode(codec.encode(restored.exportSave())));
+        original.advanceTicks(18);
+        restored.advanceTicks(18);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(225, restored.exportSave().resources().get("Furs").capacity());
+        assertEquals(0.2, restored.exportSave().resources().get("Furs").changePerSecond());
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 11),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/crafting-1"),
+                root -> root.getAsJsonObject("civilization").remove("garrison"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").remove("trainingRate"),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").addProperty("soldiers", 3),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").addProperty("soldiers", 0.5),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").addProperty("soldiers", 4_294_967_296L),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").addProperty("trainingProgress", 100),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").addProperty("trainingProgress", -0.5),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").addProperty("trainingProgress", 99.25),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").addProperty("trainingRate", 0),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("garrison").addProperty("trainingRate", 1),
+                root -> root.getAsJsonObject("structures").remove("garrison"),
+                root -> root.getAsJsonObject("technologies").remove("military"),
+                root -> root.getAsJsonObject("resources").remove("Furs"),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Furs").addProperty("visible", false),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Furs").addProperty("capacity", 101),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Furs").addProperty("capacity", 350)
+        )) {
+            var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
+    }
+
     private void invalid(Consumer<JsonObject> change) {
         var root = JsonParser.parseString(codec.encode(EvolutionEngine.newGame(2).exportSave())).getAsJsonObject();
         change.accept(root);

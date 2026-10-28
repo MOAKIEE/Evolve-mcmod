@@ -65,6 +65,9 @@ public final class EvolvePanel extends JPanel {
     private final JLabel smelterTitle = label(17, ACCENT);
     private final SmelterRow woodSmelter = new SmelterRow("Wood", "ui_smelter_wood");
     private final SmelterRow ironSmelter = new SmelterRow("Iron", "ui_smelter_iron");
+    private final JPanel garrisonControls = panel(new GridLayout(0, 1, 0, 6));
+    private final JLabel garrisonTitle = label(17, ACCENT);
+    private final JProgressBar training = new JProgressBar(0, 1000);
     private final JButton pause = button();
     private final JButton save = button();
     private final JButton load = button();
@@ -135,7 +138,18 @@ public final class EvolvePanel extends JPanel {
         smelterControls.add(smelterTitle);
         smelterControls.add(woodSmelter.panel);
         smelterControls.add(ironSmelter.panel);
-        bottomControls.add(smelterControls, BorderLayout.SOUTH);
+        var industryControls = panel(null);
+        industryControls.setLayout(new BoxLayout(industryControls, BoxLayout.Y_AXIS));
+        industryControls.add(smelterControls);
+        garrisonControls.add(garrisonTitle);
+        training.setStringPainted(true);
+        training.setForeground(ACCENT);
+        training.setBackground(SURFACE);
+        training.setBorderPainted(false);
+        training.setFont(BODY);
+        garrisonControls.add(training);
+        industryControls.add(garrisonControls);
+        bottomControls.add(industryControls, BorderLayout.SOUTH);
         right.add(bottomControls, BorderLayout.SOUTH);
         content.add(right, BorderLayout.CENTER);
         add(content, BorderLayout.CENTER);
@@ -270,6 +284,13 @@ public final class EvolvePanel extends JPanel {
         smelterTitle.setText(localizer.text("ui_smelter_title", smelter.capacity()));
         woodSmelter.update(smelter.wood(), smelter.capacity(), smelter.enabled());
         ironSmelter.update(smelter.iron(), smelter.wood(), smelter.enabled());
+        var garrison = snapshot.garrison();
+        garrisonControls.setVisible(garrison.capacity() > 0);
+        garrisonTitle.setText(localizer.text("ui_garrison_workers", garrison.soldiers(), garrison.capacity()));
+        boolean full = garrison.soldiers() == garrison.capacity();
+        training.setValue(full ? 1000 : (int) (garrison.trainingProgress() * 10));
+        training.setString(full ? localizer.text("ui_garrison_full") :
+                localizer.text("ui_garrison_progress", number(garrison.trainingProgress()), number(garrison.trainingPerSecond())));
 
         List<String> ids = snapshot.actions().stream().map(GameSnapshot.ActionView::id).toList();
         if (!ids.equals(previousActionIds)) {

@@ -132,7 +132,7 @@ public final class EvolutionEngine implements GameEngine {
             workers.put(command.jobId(), workers.get(command.jobId()) + change);
             var assigned = new LinkedHashMap<>(civ.assigned());
             assigned.put(command.jobId(), workers.get(command.jobId()));
-            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized(), civ.smelter());
+            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison());
             state.revision += applied;
         }
         return result(applied == Math.abs(command.delta()) ? Status.OK : Status.NO_AVAILABLE_WORKERS, applied);
@@ -296,7 +296,9 @@ public final class EvolutionEngine implements GameEngine {
         return new GameSnapshot(state.revision, state.elapsedTicks, state.phase, state.paused,
                 state.species, state.genus, state.progress, resources, actions, state.technologies, state.traits, jobs,
                 new GameSnapshot.SmelterView(state.count("smelter"), state.civilization.smelter().wood(),
-                        state.civilization.smelter().iron(), !state.paused && state.count("smelter") > 0));
+                        state.civilization.smelter().iron(), !state.paused && state.count("smelter") > 0),
+                new GameSnapshot.GarrisonView(state.count("garrison") * 2, state.civilization.garrison().soldiers(),
+                        state.civilization.garrison().trainingProgress(), state.civilization.garrison().trainingRate() * 4));
     }
 
     @Override
@@ -350,6 +352,7 @@ public final class EvolutionEngine implements GameEngine {
         validateContext(Objects.requireNonNull(save.context(), "context"));
         Objects.requireNonNull(save.civilization(), "civilization");
         Objects.requireNonNull(save.civilization().smelter(), "smelter");
+        Objects.requireNonNull(save.civilization().garrison(), "garrison");
         boolean primitive = save.phase() == Phase.PRIMITIVE;
         if (!save.resources().keySet().equals(primitive ? CivilizationRules.RESOURCES : java.util.Set.of("RNA", "DNA")))
             throw new IllegalArgumentException("Invalid phase resources");
@@ -381,7 +384,7 @@ public final class EvolutionEngine implements GameEngine {
                     save.resources().values().stream().anyMatch(GameSave.ResourceState::visible) ||
                     !SpeciesCatalog.startingTraits(save.species()).equals(save.traits()) || save.civilization().unemployed() != 0 ||
                     !save.civilization().workers().isEmpty() || !save.civilization().assigned().isEmpty() || save.civilization().capacitiesInitialized() ||
-                    !save.civilization().smelter().equals(SmelterState.empty()))
+                    !save.civilization().smelter().equals(SmelterState.empty()) || !save.civilization().garrison().equals(GarrisonState.empty()))
                 throw new IllegalArgumentException("Invalid civilization handoff");
             validatePrimaryGenus(save);
         } else if (primitive) {
@@ -421,6 +424,19 @@ public final class EvolutionEngine implements GameEngine {
         int mines = save.structures().getOrDefault("mine", 0);
         int cementPlants = save.structures().getOrDefault("cement_plant", 0);
         int mining = save.technologies().getOrDefault("mining", 0);
+        int garrisons = save.structures().getOrDefault("garrison", 0);
+        boolean military = save.technologies().containsKey("military");
+        if (save.structures().containsKey("garrison") != military || military &&
+                (!housing || !save.technologies().containsKey("science")) || garrisons > 0 && !currency)
+            throw new IllegalArgumentException("Missing garrison prerequisite");
+        var garrison = save.civilization().garrison();
+        if (garrison.soldiers() < 0 || garrison.soldiers() > 2L * garrisons ||
+                !Double.isFinite(garrison.trainingProgress()) || garrison.trainingProgress() < 0 || garrison.trainingProgress() >= 100 ||
+                garrison.trainingProgress() * 2 != Math.rint(garrison.trainingProgress() * 2) ||
+                garrison.trainingRate() != 0 && garrison.trainingRate() != 0.5 ||
+                garrison.trainingRate() == 0 && (garrison.trainingProgress() != 0 || garrison.soldiers() != 0) ||
+                garrisons == 0 && !garrison.equals(GarrisonState.empty()))
+            throw new IllegalArgumentException("Invalid garrison training or soldier count");
         int foundries = save.structures().getOrDefault("foundry", 0);
         if (save.structures().containsKey("foundry") != save.technologies().containsKey("foundry") ||
                 save.technologies().containsKey("foundry") && mining < 2 || foundries > 0 && mines == 0)
@@ -471,6 +487,7 @@ public final class EvolutionEngine implements GameEngine {
         checkStoredMaterial(save, "Copper", 90, mines > 0, sheds);
         checkStoredMaterial(save, "Iron", 125, mining >= 3, sheds);
         checkStoredMaterial(save, "Cement", 100, cementPlants > 0, sheds);
+        checkStoredMaterial(save, "Furs", 125, garrisons > 0, sheds);
         var population = save.resources().get("human");
         double farmCapacity = population.capacity() - houses;
         if (farmCapacity != Math.rint(farmCapacity) || farmCapacity < 0 ||
