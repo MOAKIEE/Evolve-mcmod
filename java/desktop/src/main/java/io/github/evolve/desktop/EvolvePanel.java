@@ -430,8 +430,8 @@ public final class EvolvePanel extends JPanel {
             panel.setVisible(resource.visible());
             name.setText(localizer.text(resource.name()));
             rate.setText((resource.changePerSecond() >= 0 ? "+" : "") + number(resource.changePerSecond()) + " /s");
-            amount.setValue((int) (resource.amount() / resource.capacity() * 1000));
-            amount.setString(number(resource.amount()) + " / " + number(resource.capacity()));
+            amount.setValue(resource.capacity() <= 0 ? 0 : (int) (resource.amount() / resource.capacity() * 1000));
+            amount.setString(resource.capacity() < 0 ? number(resource.amount()) : number(resource.amount()) + " / " + number(resource.capacity()));
         }
     }
 

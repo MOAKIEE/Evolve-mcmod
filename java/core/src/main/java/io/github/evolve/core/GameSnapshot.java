@@ -21,6 +21,7 @@ public record GameSnapshot(long revision, long elapsedTicks, Phase phase, boolea
         jobs = List.copyOf(jobs);
     }
 
+    /** Capacity -1 displays a quantity without a storage progress bar. */
     public record ResourceView(String id, TextRef name, double amount, double capacity,
                                double changePerSecond, boolean visible) {}
 

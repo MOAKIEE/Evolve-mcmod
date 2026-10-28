@@ -146,7 +146,7 @@ public final class EvolutionEngine implements GameEngine {
         for (int i = 0; i < action.repetitions(); i++) {
             if (!rule.visible().test(state)) { status = Status.LOCKED; break; }
             if (rule.structure() != null && state.count(rule.structure()) >= 1_000_000) { status = Status.LOCKED; break; }
-            if (rule.gathers() != null && state.amount(rule.gathers()) >= state.resources.get(rule.gathers()).capacity) {
+            if (rule.gathers() != null && resourceFull(rule.gathers())) {
                 status = Status.RESOURCE_FULL;
                 break;
             }
@@ -280,7 +280,7 @@ public final class EvolutionEngine implements GameEngine {
             for (var rule : CivilizationRules.ALL.values()) {
                 if (!rule.visible().test(state)) continue;
                 var costs = rule.costs().apply(state);
-                boolean full = rule.gathers() != null && state.amount(rule.gathers()) >= state.resources.get(rule.gathers()).capacity;
+                boolean full = rule.gathers() != null && resourceFull(rule.gathers());
                 int count = rule.structure() == null ? 0 : state.count(rule.structure());
                 actions.add(new GameSnapshot.ActionView(rule.id(), rule.category(), TextRef.of(rule.title()),
                         rule.tooltip().apply(state), count, costs,
@@ -317,7 +317,12 @@ public final class EvolutionEngine implements GameEngine {
 
     private boolean fitsStorage(Map<String, Double> costs) {
         return costs.entrySet().stream().allMatch(e -> state.resources.get(e.getKey()).visible &&
-                state.resources.get(e.getKey()).capacity >= e.getValue());
+                (state.resources.get(e.getKey()).capacity < 0 || state.resources.get(e.getKey()).capacity >= e.getValue()));
+    }
+
+    private boolean resourceFull(String id) {
+        var resource = state.resources.get(id);
+        return resource.amount >= (resource.capacity < 0 ? 1e15 : resource.capacity);
     }
 
     private CommandResult result(Status status, int applied) { return new CommandResult(status, applied, state.revision); }
@@ -350,9 +355,10 @@ public final class EvolutionEngine implements GameEngine {
             throw new IllegalArgumentException("Invalid phase resources");
         for (var entry : save.resources().entrySet()) {
             var resource = entry.getValue();
+            boolean crafted = primitive && CraftingRules.RESOURCES.contains(entry.getKey());
             if (!Double.isFinite(resource.amount()) || !Double.isFinite(resource.capacity()) || !Double.isFinite(resource.changePerSecond()) ||
-                    resource.amount() < 0 || resource.capacity() < (entry.getKey().equals("human") ? 0 : 100) ||
-                    resource.capacity() > 1e15 || resource.amount() > resource.capacity())
+                    resource.amount() < 0 || resource.amount() > 1e15 || (crafted ? resource.capacity() != -1 :
+                    resource.capacity() < (entry.getKey().equals("human") ? 0 : 100) || resource.capacity() > 1e15 || resource.amount() > resource.capacity()))
                 throw new IllegalArgumentException("Invalid resource amount or capacity");
         }
         save.structures().forEach((id, count) -> {
@@ -415,6 +421,17 @@ public final class EvolutionEngine implements GameEngine {
         int mines = save.structures().getOrDefault("mine", 0);
         int cementPlants = save.structures().getOrDefault("cement_plant", 0);
         int mining = save.technologies().getOrDefault("mining", 0);
+        int foundries = save.structures().getOrDefault("foundry", 0);
+        if (save.structures().containsKey("foundry") != save.technologies().containsKey("foundry") ||
+                save.technologies().containsKey("foundry") && mining < 2 || foundries > 0 && mines == 0)
+            throw new IllegalArgumentException("Missing foundry prerequisite");
+        for (var recipe : CraftingRules.RECIPES) {
+            boolean visible = foundries > 0 && (!recipe.resource().equals("Wrought_Iron") || mining >= 3);
+            var resource = save.resources().get(recipe.resource());
+            checkResource(save, recipe.resource(), -1, visible);
+            if (!visible && resource.changePerSecond() != 0)
+                throw new IllegalArgumentException("Active hidden crafted resource");
+        }
         if (save.structures().containsKey("mine") != (mining >= 2) || mines > 0 && !currency ||
                 save.technologies().getOrDefault("axe", 0) >= 2 && (mining < 2 || mines == 0) ||
                 save.technologies().containsKey("pickaxe") && (mining < 2 || mines == 0))
@@ -474,6 +491,8 @@ public final class EvolutionEngine implements GameEngine {
                 case "banker" -> save.technologies().getOrDefault("banking", 0) >= 2;
                 case "miner" -> mines > 0;
                 case "cement_worker" -> cementPlants > 0;
+                case "craft_Plywood", "craft_Brick" -> foundries > 0;
+                case "craft_Wrought_Iron" -> foundries > 0 && mining >= 3;
                 default -> false;
             };
             if (job.getValue() < 0 || job.getValue() > 1_000_000 || !visible && job.getValue() != 0)
@@ -484,12 +503,17 @@ public final class EvolutionEngine implements GameEngine {
                 case "banker" -> banks;
                 case "miner" -> mines;
                 case "cement_worker" -> cementPlants * 2;
+                case "craft_Plywood", "craft_Brick", "craft_Wrought_Iron" -> foundries;
                 default -> 1_000_000;
             };
             if (target < job.getValue() || target > capacity || target < 0 || !visible && target != 0 || job.getValue() > capacity)
                 throw new IllegalArgumentException("Invalid job target or capacity");
+            if (CraftingRules.recipeForJob(job.getKey()) != null && target != job.getValue())
+                throw new IllegalArgumentException("Craftsmen do not keep vacant assignment targets");
             totalWorkers += job.getValue();
         }
+        if (CraftingRules.RECIPES.stream().mapToLong(r -> save.civilization().workers().get(r.job())).sum() > foundries)
+            throw new IllegalArgumentException("Craftsmen exceed shared foundry capacity");
         if (population.amount() != Math.rint(population.amount()) || totalWorkers != population.amount())
             throw new IllegalArgumentException("Inconsistent primitive population and jobs");
         for (String id : List.of("RNA", "DNA")) {

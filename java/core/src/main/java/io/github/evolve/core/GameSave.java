@@ -10,8 +10,8 @@ public record GameSave(int schemaVersion, String ruleset, long elapsedTicks, lon
                        Map<String, ResourceState> resources, Map<String, Integer> structures,
                        Map<String, Integer> technologies, Map<String, Double> traits,
                        CivilizationState civilization) {
-    public static final int SCHEMA_VERSION = 10;
-    public static final String RULESET = "evolve-1.4.10/farm-storage-1";
+    public static final int SCHEMA_VERSION = 11;
+    public static final String RULESET = "evolve-1.4.10/crafting-1";
 
     public GameSave {
         resources = GameSnapshot.ordered(resources);
@@ -20,5 +20,6 @@ public record GameSave(int schemaVersion, String ruleset, long elapsedTicks, lon
         traits = GameSnapshot.ordered(traits);
     }
 
+    /** Capacity -1 marks crafted materials without building-based storage limits. */
     public record ResourceState(double amount, double capacity, boolean visible, double changePerSecond) {}
 }

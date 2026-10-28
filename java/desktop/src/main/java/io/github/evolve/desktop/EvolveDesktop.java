@@ -433,6 +433,44 @@ public final class EvolveDesktop {
                 panel.engine().exportSave().resources().get("Iron").capacity() != 100 + 281d * sheds)
             throw new IllegalStateException("Reinforced shed rounding failed");
         render(panel, Path.of("build/preview-farm-storage.png"), 1400);
+        craftingSmokeTest(panel);
+    }
+
+    private static void craftingSmokeTest(EvolvePanel panel) throws Exception {
+        buyWithStorage(panel, "city-farm");
+        buyWithStorage(panel, "city-farm");
+        waitFor(panel, "human", 18);
+        panel.jobButton("farmer", true).doClick();
+        panel.jobButton("farmer", true).doClick();
+        buyWithStorage(panel, "tech-foundry");
+        for (int i = 0; i < 3; i++) buyWithStorage(panel, "city-foundry");
+        buyWithStorage(panel, "tech-artisans");
+        panel.jobButton("cement_worker", true).doClick();
+        waitFor(panel, "Cement", 44);
+        for (String id : java.util.List.of("Plywood", "Brick", "Wrought_Iron")) {
+            buyWithStorage(panel, "craft-" + id);
+            if (Math.abs(panel.engine().exportSave().resources().get(id).amount() - 1.09) > 1e-9)
+                throw new IllegalStateException("Manual crafting failed: " + id);
+            panel.jobButton("craft_" + id, true).doClick();
+        }
+        panel.engine().advanceTicks(20);
+        panel.refresh();
+        for (String id : java.util.List.of("Plywood", "Brick", "Wrought_Iron")) {
+            if (Math.abs(panel.engine().exportSave().resources().get(id).changePerSecond() - 1.09 / 140) > 1e-9)
+                throw new IllegalStateException("Automatic crafting failed: " + id);
+            if (panel.engine().exportSave().resources().get(id).capacity() != -1)
+                throw new IllegalStateException("Crafted material was capped: " + id);
+        }
+        if (!panel.saveGame()) throw new IllegalStateException("Crafting save failed");
+        var saved = panel.engine().exportSave();
+        panel.jobButton("craft_Plywood", false).doClick();
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Crafting load failed");
+        panel.jobButton("craft_Plywood", false).doClick();
+        if (panel.engine().exportSave().civilization().workers().get("craft_Plywood") != 0)
+            throw new IllegalStateException("Craftsman button used old session");
+        panel.jobButton("craft_Plywood", true).doClick();
+        render(panel, Path.of("build/preview-crafting.png"), 1540);
     }
 
     private static void buyWithStorage(EvolvePanel panel, String id) {

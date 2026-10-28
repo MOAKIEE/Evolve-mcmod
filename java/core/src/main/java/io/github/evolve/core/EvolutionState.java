@@ -69,6 +69,6 @@ final class EvolutionState {
             this.capacity = capacity;
             this.visible = visible;
         }
-        void addCapped(double change) { amount = Math.max(0, Math.min(capacity, amount + change)); }
+        void addCapped(double change) { amount = Math.max(0, Math.min(capacity < 0 ? 1e15 : capacity, amount + change)); }
     }
 }

@@ -190,8 +190,8 @@ class JsonPersistenceTest {
         resources.put("Knowledge", new GameSave.ResourceState(0, 600, true, 0));
         resources.put("Money", new GameSave.ResourceState(0, 1000, true, 0));
         resources.put("human", new GameSave.ResourceState(2, 2, true, 0));
-        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "cement_worker", 0, "professor", 0, "banker", 0);
-        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "cement_worker", 0, "professor", 1, "banker", 0);
+        var workers = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "craft_Plywood", 0, "craft_Brick", 0, "craft_Wrought_Iron", 0, "cement_worker", 0, "professor", 0, "banker", 0);
+        var assigned = Map.of("farmer", 0, "lumberjack", 0, "quarry_worker", 0, "miner", 0, "craft_Plywood", 0, "craft_Brick", 0, "craft_Wrought_Iron", 0, "cement_worker", 0, "professor", 1, "banker", 0);
         return new GameSave(save.schemaVersion(), save.ruleset(), 0, 0, 0, 0, false, save.phase(), save.randomSeed(),
                 save.species(), save.genus(), save.progress(), save.context(), resources,
                 Map.of("basic_housing", 2, "shed", 1, "university", 1),
@@ -482,6 +482,64 @@ class JsonPersistenceTest {
                 root -> root.getAsJsonObject("resources").getAsJsonObject("Copper").addProperty("capacity", 392),
                 root -> root.getAsJsonObject("resources").getAsJsonObject("Iron").addProperty("capacity", 663),
                 root -> root.getAsJsonObject("resources").getAsJsonObject("Cement").addProperty("capacity", 551)
+        )) {
+            var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
+    }
+
+    @Test
+    void craftingRoundTripPreservesUncappedMaterialsSharedJobsAndInputThresholds() {
+        var base = scienceSave();
+        var resources = new LinkedHashMap<>(base.resources());
+        resources.put("Lumber", new GameSave.ResourceState(0.78, 500, true, 0));
+        resources.put("Copper", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Iron", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Cement", new GameSave.ResourceState(44, 100, true, 0));
+        for (String id : java.util.List.of("Plywood", "Brick", "Wrought_Iron"))
+            resources.put(id, new GameSave.ResourceState(1000, -1, true, 0));
+        var workers = new LinkedHashMap<>(base.civilization().workers());
+        workers.put("craft_Plywood", 1);
+        workers.put("craft_Brick", 1);
+        var tech = new LinkedHashMap<>(base.technologies());
+        tech.put("mining", 3);
+        tech.put("cement", 1);
+        tech.put("foundry", 2);
+        var structures = new LinkedHashMap<>(base.structures());
+        structures.put("rock_quarry", 0);
+        structures.put("mine", 1);
+        structures.put("cement_plant", 1);
+        structures.put("foundry", 2);
+        var save = new GameSave(base.schemaVersion(), base.ruleset(), 0, 0, 0, 0, false, base.phase(), base.randomSeed(),
+                base.species(), base.genus(), base.progress(), base.context(), resources, structures, tech, base.traits(),
+                new CivilizationState("humanoid", 0, workers, workers, false));
+        var original = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        original.advanceTicks(5);
+        restored.advanceTicks(5);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(1000, restored.exportSave().resources().get("Plywood").amount());
+        assertEquals(0, restored.exportSave().resources().get("Plywood").changePerSecond());
+        assertEquals(1.06 / 140, restored.exportSave().resources().get("Brick").changePerSecond(), 1e-12);
+        assertEquals(-44d / 140, restored.exportSave().resources().get("Cement").changePerSecond(), 1e-12);
+        restored = EvolutionEngine.restore(codec.decode(codec.encode(restored.exportSave())));
+        original.advanceTicks(18);
+        restored.advanceTicks(18);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(-1, restored.exportSave().resources().get("Brick").capacity());
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 10),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/farm-storage-1"),
+                root -> root.getAsJsonObject("resources").remove("Brick"),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Plywood").addProperty("capacity", 100),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Iron").addProperty("capacity", -1),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Brick").addProperty("visible", false),
+                root -> root.getAsJsonObject("technologies").remove("foundry"),
+                root -> root.getAsJsonObject("structures").remove("foundry"),
+                root -> root.getAsJsonObject("structures").addProperty("foundry", 1),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("assigned").addProperty("craft_Plywood", 2),
+                root -> root.getAsJsonObject("civilization").getAsJsonObject("workers").remove("craft_Plywood")
         )) {
             var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
             change.accept(root);

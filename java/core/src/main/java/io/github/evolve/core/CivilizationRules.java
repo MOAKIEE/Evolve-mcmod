@@ -16,13 +16,13 @@ final class CivilizationRules {
                 Function<EvolutionState, Map<String, Double>> costs, Consumer<EvolutionState> effect,
                 Function<EvolutionState, List<TextRef>> tooltip, String structure, String gathers) {}
 
-    static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "Copper", "Iron", "Cement", "human");
-    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank", "mine", "smelter", "cement_plant", "sawmill");
-    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "miner", "cement_worker", "professor", "banker");
+    static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "Copper", "Iron", "Cement", "Plywood", "Brick", "Wrought_Iron", "human");
+    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank", "mine", "smelter", "cement_plant", "sawmill", "foundry");
+    static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "miner", "craft_Plywood", "craft_Brick", "craft_Wrought_Iron", "cement_worker", "professor", "banker");
     static final Map<String, Integer> TECH_MAX = Map.ofEntries(Map.entry("primitive", 3), Map.entry("housing", 1),
             Map.entry("agriculture", 2), Map.entry("currency", 1), Map.entry("axe", 3), Map.entry("mining", 3),
             Map.entry("storage", 2), Map.entry("science", 1), Map.entry("banking", 2), Map.entry("pickaxe", 2), Map.entry("smelting", 1),
-            Map.entry("cement", 1), Map.entry("saw", 1), Map.entry("farm", 1));
+            Map.entry("cement", 1), Map.entry("saw", 1), Map.entry("farm", 1), Map.entry("foundry", 2));
     static final Map<String, Rule> ALL = build();
 
     private CivilizationRules() {}
@@ -52,6 +52,7 @@ final class CivilizationRules {
         state.resources.put("Copper", new EvolutionState.Resource(0, 100, false));
         state.resources.put("Iron", new EvolutionState.Resource(0, 100, false));
         state.resources.put("Cement", new EvolutionState.Resource(0, 100, false));
+        CraftingRules.RECIPES.forEach(r -> state.resources.put(r.resource(), new EvolutionState.Resource(0, -1, false)));
         state.resources.put("human", new EvolutionState.Resource(0, 0, false));
         state.traits.clear();
         state.traits.putAll(traits(state.civilization));
@@ -62,6 +63,8 @@ final class CivilizationRules {
     }
 
     static boolean jobVisible(EvolutionState state, String job) {
+        var recipe = CraftingRules.recipeForJob(job);
+        if (recipe != null) return state.count("foundry") > 0 && state.resources.get(recipe.resource()).visible;
         return switch (job) {
             case "farmer" -> state.count("farm") > 0;
             case "lumberjack" -> state.tech("axe") >= 1;
@@ -75,6 +78,8 @@ final class CivilizationRules {
     }
 
     static int jobCapacity(EvolutionState state, String job) {
+        if (CraftingRules.recipeForJob(job) != null)
+            return state.count("foundry") - CraftingRules.workers(state) + state.civilization.workers().get(job);
         return switch (job) {
             case "professor" -> state.count("university");
             case "banker" -> state.count("bank");
@@ -145,6 +150,7 @@ final class CivilizationRules {
         double deposit = new BigDecimal(income * 0.25).setScale(2, RoundingMode.HALF_UP).doubleValue();
         money.rate = deposit == 0 ? 0 : deposit * 4;
         money.addCapped(deposit);
+        CraftingRules.fastLoop(state);
         reconcileWorkers(state, unemployed);
     }
 
@@ -154,6 +160,7 @@ final class CivilizationRules {
         int unemployed = civ.unemployed();
         // Original fastLoop replenishes each finite job by at most one worker, before production.
         for (String job : JOBS) {
+            if (CraftingRules.recipeForJob(job) != null) continue;
             int capacity = jobCapacity(state, job);
             if (unemployed > 0 && workers.get(job) < capacity && workers.get(job) < civ.assigned().get(job)) {
                 workers.put(job, workers.get(job) + 1);
@@ -199,7 +206,9 @@ final class CivilizationRules {
             excess -= loss;
         }
         var civ = state.civilization;
-        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.assigned(), civ.capacitiesInitialized(), civ.smelter());
+        var assigned = new LinkedHashMap<>(civ.assigned());
+        CraftingRules.RECIPES.forEach(r -> assigned.put(r.job(), workers.get(r.job())));
+        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, assigned, civ.capacitiesInitialized(), civ.smelter());
     }
 
     private static Map<String, Rule> build() {
@@ -227,7 +236,10 @@ final class CivilizationRules {
         research(rules, "metal_working", Map.of("mining", 1), "mining", 2, Map.of("Knowledge", 350d), s -> s.structures.put("mine", 0));
         research(rules, "copper_axes", Map.of("axe", 1, "mining", 2), "axe", 2, Map.of("Knowledge", 540d, "Copper", 25d), s -> {});
         research(rules, "copper_pickaxe", Map.of("mining", 2), "pickaxe", 1, Map.of("Knowledge", 675d, "Copper", 25d), s -> {});
-        research(rules, "iron_mining", Map.of("mining", 2), "mining", 3, Map.of("Knowledge", 2500d), s -> s.resources.get("Iron").visible = true);
+        research(rules, "iron_mining", Map.of("mining", 2), "mining", 3, Map.of("Knowledge", 2500d), s -> {
+            s.resources.get("Iron").visible = true;
+            if (s.count("foundry") > 0) s.resources.get("Wrought_Iron").visible = true;
+        });
         research(rules, "iron_axes", Map.of("axe", 2, "mining", 3), "axe", 3, Map.of("Knowledge", 2700d, "Iron", 250d), s -> {});
         research(rules, "iron_pickaxe", Map.of("pickaxe", 1, "mining", 3), "pickaxe", 2, Map.of("Knowledge", 3200d, "Iron", 250d), s -> {});
         research(rules, "smelting", Map.of("mining", 3), "smelting", 1, Map.of("Knowledge", 4050d), s -> s.structures.put("smelter", 0));
@@ -236,6 +248,8 @@ final class CivilizationRules {
         research(rules, "farm_house", Map.of("agriculture", 1, "housing", 1, "currency", 1), "farm", 1, Map.of("Money", 50d, "Knowledge", 180d), s -> {});
         research(rules, "reinforced_shed", Map.of("storage", 1, "cement", 1, "mining", 3), "storage", 2,
                 Map.of("Money", 3750d, "Knowledge", 2550d, "Iron", 750d, "Cement", 500d), s -> {});
+        research(rules, "foundry", Map.of("mining", 2), "foundry", 1, Map.of("Knowledge", 650d), s -> s.structures.put("foundry", 0));
+        research(rules, "artisans", Map.of("foundry", 1), "foundry", 2, Map.of("Knowledge", 1500d), s -> {});
         building(rules, "farm", "agriculture", "city_farm", 3, 50, 1.32, 20, 1.36, 10, 1.36, s -> {
             if (s.tech("farm") > 0) { s.resources.get("human").capacity++; s.resources.get("human").visible = true; }
         });
@@ -293,6 +307,16 @@ final class CivilizationRules {
                         "Cement", scaled(420, 1.26, s.count("sawmill"))),
                 s -> { s.addStructure("sawmill"); s.resources.get("Lumber").capacity += 200; },
                 s -> List.of(TextRef.of("ui_sawmill_effect", 5, 200)), "sawmill", null));
+        rules.put("city-foundry", new Rule("city-foundry", "industrial", "city_foundry",
+                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("foundry") > 0,
+                s -> Map.of("Money", scaled(750, 1.36, s.count("foundry")), "Stone", scaled(100, 1.36, s.count("foundry")), "Copper", scaled(250, 1.36, s.count("foundry"))),
+                s -> {
+                    s.addStructure("foundry");
+                    s.resources.get("Plywood").visible = true;
+                    s.resources.get("Brick").visible = true;
+                    if (s.resources.get("Iron").visible) s.resources.get("Wrought_Iron").visible = true;
+                }, s -> s.tech("foundry") >= 2 ? List.of(TextRef.of("ui_craftsman_capacity", 1), TextRef.of("city_crafted_mats", 3)) :
+                        List.of(TextRef.of("ui_craftsman_capacity", 1)), "foundry", null));
         rules.put("city-basic_housing", new Rule("city-basic_housing", "residential", "city_basic_housing_title",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("housing") == 1,
                 s -> {
@@ -306,6 +330,7 @@ final class CivilizationRules {
                     s.resources.get("human").capacity++;
                     s.resources.get("human").visible = true;
                 }, s -> List.of(TextRef.of("city_basic_housing_desc")), "basic_housing", null));
+        CraftingRules.install(rules);
         return GameSnapshot.ordered(rules);
     }
 
@@ -359,6 +384,6 @@ final class CivilizationRules {
         rules.put(actionId, new Rule(actionId, "research", "tech_" + id,
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && requirements.entrySet().stream().allMatch(e -> s.tech(e.getKey()) >= e.getValue()) && s.tech(grant) < rank,
                 s -> costs, s -> { extra.accept(s); s.grant(grant, rank); },
-                s -> List.of(TextRef.of("tech_" + id + "_desc")), null, null));
+                s -> List.of(TextRef.of("tech_" + id + (id.equals("foundry") || id.equals("artisans") ? "_effect" : "_desc"))), null, null));
     }
 }
