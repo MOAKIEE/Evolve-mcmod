@@ -17,11 +17,11 @@ final class CivilizationRules {
                 Function<EvolutionState, List<TextRef>> tooltip, String structure, String gathers) {}
 
     static final Set<String> RESOURCES = Set.of("RNA", "DNA", "Food", "Lumber", "Stone", "Knowledge", "Money", "Copper", "Iron", "Cement", "Furs", "Plywood", "Brick", "Wrought_Iron", "human");
-    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank", "mine", "smelter", "cement_plant", "sawmill", "foundry", "garrison");
+    static final Set<String> STRUCTURES = Set.of("basic_housing", "farm", "lumber_yard", "rock_quarry", "shed", "university", "bank", "mine", "smelter", "cement_plant", "sawmill", "foundry", "garrison", "library");
     static final List<String> JOBS = List.of("farmer", "lumberjack", "quarry_worker", "miner", "craft_Plywood", "craft_Brick", "craft_Wrought_Iron", "cement_worker", "professor", "banker");
     static final Map<String, Integer> TECH_MAX = Map.ofEntries(Map.entry("primitive", 3), Map.entry("housing", 1),
             Map.entry("agriculture", 2), Map.entry("currency", 1), Map.entry("axe", 3), Map.entry("mining", 3),
-            Map.entry("storage", 2), Map.entry("science", 1), Map.entry("banking", 2), Map.entry("pickaxe", 2), Map.entry("smelting", 1),
+            Map.entry("storage", 2), Map.entry("science", 4), Map.entry("banking", 2), Map.entry("pickaxe", 2), Map.entry("smelting", 1),
             Map.entry("cement", 1), Map.entry("saw", 1), Map.entry("farm", 1), Map.entry("foundry", 2), Map.entry("military", 1));
     static final Map<String, Rule> ALL = build();
 
@@ -94,7 +94,7 @@ final class CivilizationRules {
         state.resources.get("Food").capacity = 1000;
         state.resources.get("Lumber").capacity = 200 + 100d * state.count("lumber_yard") + (double) shedCapacity(300, state.tech("storage")) * state.count("shed") + 200d * state.count("sawmill");
         state.resources.get("Stone").capacity = 200 + 100d * state.count("rock_quarry") + (state.tech("primitive") >= 2 ? (double) shedCapacity(300, state.tech("storage")) * state.count("shed") : 0);
-        state.resources.get("Knowledge").capacity = 100 + 500d * state.count("university");
+        state.resources.get("Knowledge").capacity = 100 + universityKnowledge(state) * state.count("university") + 125d * state.count("library");
         state.resources.get("Money").capacity = 1000 + 1800d * state.count("bank");
         state.resources.get("Copper").capacity = 100 + (state.resources.get("Copper").visible ? (double) shedCapacity(90, state.tech("storage")) * state.count("shed") : 0);
         state.resources.get("Iron").capacity = 100 + (state.resources.get("Iron").visible ? (double) shedCapacity(125, state.tech("storage")) * state.count("shed") : 0);
@@ -104,7 +104,8 @@ final class CivilizationRules {
         population.capacity = state.count("basic_housing") + (state.tech("farm") > 0 ? state.count("farm") : 0);
         population.visible = population.capacity > 0;
         var civ = state.civilization;
-        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), true, civ.smelter(), civ.garrison());
+        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), true, civ.smelter(), civ.garrison(),
+                state.tech("science") >= 3 ? 0.5 + state.count("library") * 0.01 : civ.professorImpact());
     }
 
     static void fastLoop(EvolutionState state) {
@@ -130,7 +131,8 @@ final class CivilizationRules {
                 state.nextRoll(population.amount * (3 - Math.pow(2, 0.25))) <= 0) { population.amount++; unemployed++; }
         double hunger = fed ? 1 : 0.5;
         produce(state, "Furs", soldiers / 10d * hunger * multiplier);
-        knowledge.rate = (workers.get("professor") * 0.5 * hunger + (state.tech("primitive") >= 3 ? 1 : 0)) * multiplier;
+        knowledge.rate = (workers.get("professor") * state.civilization.professorImpact() * hunger + (state.tech("primitive") >= 3 ? 1 : 0)) *
+                multiplier * (1 + state.count("library") * 0.05);
         knowledge.addCapped(knowledge.rate * 0.25);
         int cementWorkers = state.resources.get("Cement").visible ? Math.min(workers.get("cement_worker"), (int) Math.floor(state.amount("Stone") / 0.75)) : 0;
         double stoneConsumed = cementWorkers * 3d;
@@ -169,7 +171,7 @@ final class CivilizationRules {
         int soldiers = current.soldiers();
         while (progress >= 100) { progress -= 100; soldiers++; }
         state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(),
-                civ.capacitiesInitialized(), civ.smelter(), new GarrisonState(soldiers, progress, rate));
+                civ.capacitiesInitialized(), civ.smelter(), new GarrisonState(soldiers, progress, rate), civ.professorImpact());
     }
 
     private static void refillJobs(EvolutionState state) {
@@ -185,14 +187,14 @@ final class CivilizationRules {
                 unemployed--;
             }
         }
-        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.assigned(), civ.capacitiesInitialized(), civ.smelter(), civ.garrison());
+        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, civ.assigned(), civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact());
     }
 
     private record Smelting(int iron, double woodPerSecond) {}
 
     static void setSmelter(EvolutionState state, SmelterState smelter) {
         var civ = state.civilization;
-        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), civ.capacitiesInitialized(), smelter, civ.garrison());
+        state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(), civ.capacitiesInitialized(), smelter, civ.garrison(), civ.professorImpact());
     }
 
     private static Smelting smelt(EvolutionState state) {
@@ -226,7 +228,7 @@ final class CivilizationRules {
         var civ = state.civilization;
         var assigned = new LinkedHashMap<>(civ.assigned());
         CraftingRules.RECIPES.forEach(r -> assigned.put(r.job(), workers.get(r.job())));
-        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison());
+        state.civilization = new CivilizationState(civ.primaryGenus(), unemployed, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact());
     }
 
     private static Map<String, Rule> build() {
@@ -269,6 +271,9 @@ final class CivilizationRules {
         research(rules, "foundry", Map.of("mining", 2), "foundry", 1, Map.of("Knowledge", 650d), s -> s.structures.put("foundry", 0));
         research(rules, "artisans", Map.of("foundry", 1), "foundry", 2, Map.of("Knowledge", 1500d), s -> {});
         research(rules, "garrison", Map.of("science", 1, "housing", 1), "military", 1, Map.of("Knowledge", 70d), s -> s.structures.put("garrison", 0));
+        research(rules, "library", Map.of("science", 1, "cement", 1), "science", 2, Map.of("Knowledge", 720d), s -> s.structures.put("library", 0));
+        research(rules, "thesis", Map.of("science", 2), "science", 3, Map.of("Knowledge", 1125d), s -> {});
+        research(rules, "research_grant", Map.of("science", 3), "science", 4, Map.of("Knowledge", 3240d), s -> {});
         building(rules, "farm", "agriculture", "city_farm", 3, 50, 1.32, 20, 1.36, 10, 1.36, s -> {
             if (s.tech("farm") > 0) { s.resources.get("human").capacity++; s.resources.get("human").visible = true; }
         });
@@ -293,8 +298,21 @@ final class CivilizationRules {
                 s -> Map.of("Money", scaled(900, 1.5, s.count("university")) - 500,
                         "Lumber", scaled(500, 1.36, s.count("university")) - 200,
                         "Stone", scaled(750, 1.36, s.count("university")) - 350),
-                s -> { s.addStructure("university"); s.resources.get("Knowledge").capacity += 500; },
-                s -> List.of(TextRef.of("city_university_effect", 1), TextRef.of("city_max_knowledge", 500)), "university", null));
+                s -> { s.addStructure("university"); s.resources.get("Knowledge").capacity += universityKnowledge(s); },
+                s -> List.of(TextRef.of("city_university_effect", 1), TextRef.of("city_max_knowledge", Math.round(universityKnowledge(s)))), "university", null));
+        rules.put("city-library", new Rule("city-library", "science", "city_library",
+                s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("science") >= 2,
+                s -> Map.of("Money", scaled(45, 1.2, s.count("library")), "Furs", scaled(22, 1.2, s.count("library")),
+                        "Plywood", scaled(20, 1.2, s.count("library")), "Brick", scaled(15, 1.2, s.count("library"))),
+                s -> {
+                    s.addStructure("library"); s.resources.get("Knowledge").capacity += 125;
+                    if (s.tech("science") >= 3) {
+                        var civ = s.civilization;
+                        s.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed(), civ.workers(), civ.assigned(),
+                                civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), 0.5 + s.count("library") * 0.01);
+                    }
+                }, s -> s.tech("science") >= 3 ? List.of(TextRef.of("city_max_knowledge", 125), TextRef.of("city_library_effect", 5), TextRef.of("ui_thesis_professor")) :
+                        List.of(TextRef.of("city_max_knowledge", 125), TextRef.of("city_library_effect", 5)), "library", null));
         rules.put("city-bank", new Rule("city-bank", "commercial", "city_bank",
                 s -> s.phase == GameSnapshot.Phase.PRIMITIVE && s.tech("banking") > 0,
                 s -> Map.of("Money", scaled(250, 1.35, s.count("bank")), "Lumber", scaled(75, 1.32, s.count("bank")),
@@ -360,6 +378,10 @@ final class CivilizationRules {
     }
 
     private static double scaled(int base, double scale, int count) { return Math.round(base * Math.pow(scale, count)); }
+
+    private static double universityKnowledge(EvolutionState state) {
+        return 500 * (1 + (state.tech("science") >= 4 ? state.count("library") * 0.02 : 0));
+    }
 
     static int shedCapacity(int base, int storage) { return (int) Math.round(base * (storage >= 2 ? 2.25 : 1)); }
 

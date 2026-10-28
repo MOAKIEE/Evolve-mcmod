@@ -113,6 +113,7 @@ class CivilizationParityTest {
         assertEquals(civilization.get("capacitiesInitialized").getAsBoolean(), save.civilization().capacitiesInitialized());
         assertEquals(GSON.fromJson(civilization.get("smelter"), SmelterState.class), save.civilization().smelter());
         assertEquals(GSON.fromJson(civilization.get("garrison"), GarrisonState.class), save.civilization().garrison());
+        assertEquals(civilization.get("professorImpact").getAsDouble(), save.civilization().professorImpact(), 1e-12);
         if (expected.has("available")) availability(expected.getAsJsonArray("available"), game);
     }
 

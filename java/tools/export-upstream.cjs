@@ -101,6 +101,7 @@ const extras = {
         ui_garrison_hunting: 'Each soldier hunts 1/3 food and 0.1 furs per second, consumes 1 food per second and pays taxes.',
         ui_shed_furs: 'Increases fur storage capacity by %0.', ui_garrison_workers: 'Soldiers: %0 / %1',
         ui_garrison_progress: 'Training: %0% (+%1%/s)', ui_garrison_full: 'Barracks full',
+        ui_thesis_professor: 'Libraries increase each professor\'s base knowledge output by 0.01.',
     },
     zh_cn: {
         ui_title: '进化', ui_resources: '资源', ui_actions: '演化', ui_pause: '暂停',
@@ -138,6 +139,7 @@ const extras = {
         ui_garrison_hunting: '每名士兵每秒狩猎 1/3 食物与 0.1 皮毛、消耗 1 食物并纳税。',
         ui_shed_furs: '皮毛存储容量增加 %0。', ui_garrison_workers: '士兵：%0 / %1',
         ui_garrison_progress: '训练：%0%（+%1%/秒）', ui_garrison_full: '驻军已满',
+        ui_thesis_professor: '每座图书馆使每位教授的基础知识产出增加 0.01。',
     },
 };
 const defaults = JSON.parse(read('strings/strings.json'));
@@ -145,7 +147,7 @@ for (const [locale, file] of [['en_us', null], ['zh_cn', 'strings/strings.zh-CN.
     const translated = file ? { ...defaults, ...JSON.parse(read(file)) } : defaults;
     const selected = Object.fromEntries(Object.entries(translated)
         .filter(([key, value]) => typeof value === 'string' &&
-            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money|Copper|Iron|Cement|Furs|Plywood|Brick|Wrought_Iron)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?|shed_title1|university(?:_effect)?|max_knowledge|bank|smelter(?:_effect1)?|cement_plant|sawmill|foundry|crafted_mats|garrison)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining|storage|science|banking|investing|metal_working|copper_axes|copper_pickaxe|iron_mining|iron_axes|iron_pickaxe|smelting|cement|iron_saw|farm_house|reinforced_shed|foundry|artisans|garrison)(?:_desc)?$|tech_(foundry|artisans)_effect$|job_(unemployed|farmer|lumberjack|quarry_worker|miner|professor|banker|cement_worker(?:_desc)?)$)/.test(key))
+            /^(evo_|race_|genelab_genus_|resource_(RNA|DNA|Food|Lumber|Stone|Knowledge|Money|Copper|Iron|Cement|Furs|Plywood|Brick|Wrought_Iron)_name$|city_(food(?:_desc)?|lumber(?:_desc)?|basic_housing_(?:title|desc)|farm(?:_desc)?|lumber_yard|rock_quarry(?:_desc)?|shed_title1|university(?:_effect)?|max_knowledge|bank|smelter(?:_effect1)?|cement_plant|sawmill|foundry|crafted_mats|garrison|library(?:_effect)?)$|tech_(club|bone_tools|sundial|housing|agriculture|irrigation|currency|stone_axe|mining|storage|science|banking|investing|metal_working|copper_axes|copper_pickaxe|iron_mining|iron_axes|iron_pickaxe|smelting|cement|iron_saw|farm_house|reinforced_shed|foundry|artisans|garrison|library|thesis|research_grant)(?:_desc)?$|tech_(foundry|artisans)_effect$|job_(unemployed|farmer|lumberjack|quarry_worker|miner|professor|banker|cement_worker(?:_desc)?)$)/.test(key))
         .map(([key, value]) => [`evolve.${key}`, plain(value)]));
     for (const [key, value] of Object.entries(extras[locale])) selected[`evolve.${key}`] = value;
     // Minecraft uses 1-based indexed format placeholders; the upstream uses %0, %1, ... .

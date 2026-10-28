@@ -132,7 +132,7 @@ public final class EvolutionEngine implements GameEngine {
             workers.put(command.jobId(), workers.get(command.jobId()) + change);
             var assigned = new LinkedHashMap<>(civ.assigned());
             assigned.put(command.jobId(), workers.get(command.jobId()));
-            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison());
+            state.civilization = new CivilizationState(civ.primaryGenus(), civ.unemployed() - change, workers, assigned, civ.capacitiesInitialized(), civ.smelter(), civ.garrison(), civ.professorImpact());
             state.revision += applied;
         }
         return result(applied == Math.abs(command.delta()) ? Status.OK : Status.NO_AVAILABLE_WORKERS, applied);
@@ -384,7 +384,8 @@ public final class EvolutionEngine implements GameEngine {
                     save.resources().values().stream().anyMatch(GameSave.ResourceState::visible) ||
                     !SpeciesCatalog.startingTraits(save.species()).equals(save.traits()) || save.civilization().unemployed() != 0 ||
                     !save.civilization().workers().isEmpty() || !save.civilization().assigned().isEmpty() || save.civilization().capacitiesInitialized() ||
-                    !save.civilization().smelter().equals(SmelterState.empty()) || !save.civilization().garrison().equals(GarrisonState.empty()))
+                    !save.civilization().smelter().equals(SmelterState.empty()) || !save.civilization().garrison().equals(GarrisonState.empty()) ||
+                    save.civilization().professorImpact() != 0.5)
                 throw new IllegalArgumentException("Invalid civilization handoff");
             validatePrimaryGenus(save);
         } else if (primitive) {
@@ -438,6 +439,14 @@ public final class EvolutionEngine implements GameEngine {
                 garrisons == 0 && !garrison.equals(GarrisonState.empty()))
             throw new IllegalArgumentException("Invalid garrison training or soldier count");
         int foundries = save.structures().getOrDefault("foundry", 0);
+        int libraries = save.structures().getOrDefault("library", 0);
+        int science = save.technologies().getOrDefault("science", 0);
+        if (save.structures().containsKey("library") != (science >= 2) || science >= 2 && !save.technologies().containsKey("cement") ||
+                libraries > 0 && (foundries == 0 || garrisons == 0 || cementPlants == 0))
+            throw new IllegalArgumentException("Missing library prerequisite or material source");
+        double impact = save.civilization().professorImpact();
+        if (!Double.isFinite(impact) || impact != 0.5 && (science < 3 || impact != 0.5 + libraries * 0.01))
+            throw new IllegalArgumentException("Invalid professor impact");
         if (save.structures().containsKey("foundry") != save.technologies().containsKey("foundry") ||
                 save.technologies().containsKey("foundry") && mining < 2 || foundries > 0 && mines == 0)
             throw new IllegalArgumentException("Missing foundry prerequisite");
@@ -482,7 +491,13 @@ public final class EvolutionEngine implements GameEngine {
             throw new IllegalArgumentException("Inconsistent lumber or stone shed capacity");
         checkResource(save, "Lumber", save.resources().get("Lumber").capacity(), true);
         checkResource(save, "Stone", save.resources().get("Stone").capacity(), primitive >= 2);
-        checkResource(save, "Knowledge", 100 + 500d * universities, primitive >= 3);
+        double knowledgeCapacity = save.resources().get("Knowledge").capacity();
+        double baseKnowledge = 100 + 500d * universities + 125d * libraries;
+        double appliedPairs = Math.rint((knowledgeCapacity - baseKnowledge) / 10);
+        if (science < 4 ? knowledgeCapacity != baseKnowledge : appliedPairs < 0 || appliedPairs > (long) libraries * universities ||
+                Math.abs(knowledgeCapacity - baseKnowledge - appliedPairs * 10) > Math.max(1e-9, Math.ulp(knowledgeCapacity) * 4))
+            throw new IllegalArgumentException("Invalid library and university knowledge capacity");
+        checkResource(save, "Knowledge", knowledgeCapacity, primitive >= 3);
         checkResource(save, "Money", 1000 + 1800d * banks, currency);
         checkStoredMaterial(save, "Copper", 90, mines > 0, sheds);
         checkStoredMaterial(save, "Iron", 125, mining >= 3, sheds);

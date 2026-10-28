@@ -98,7 +98,8 @@ class IronEngineTest {
         action.costs().forEach((resource, amount) -> {
             for (int attempts = 0; game.exportSave().resources().get(resource).amount() < amount; attempts++) {
                 assertTrue(attempts < 600, "Production stalled: " + resource);
-                game.advanceTicks(200);
+                if (CraftingRules.RESOURCES.contains(resource)) buyExpanded(game, "craft-" + resource);
+                else game.advanceTicks(200);
             }
         });
         act(game, id, 1);

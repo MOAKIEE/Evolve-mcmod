@@ -104,10 +104,11 @@ public final class JsonSaveCodec implements SaveCodec<String> {
             if (!entry.isJsonPrimitive() || !entry.getAsJsonPrimitive().isString() || !species.add(entry.getAsString()))
                 throw new SaveFormatException("Invalid or duplicate extinct species");
         }
-        var civilization = fields(root.get("civilization"), "primaryGenus", "unemployed", "workers", "assigned", "capacitiesInitialized", "smelter", "garrison");
+        var civilization = fields(root.get("civilization"), "primaryGenus", "unemployed", "workers", "assigned", "capacitiesInitialized", "smelter", "garrison", "professorImpact");
         strings(civilization, "primaryGenus");
         integers(civilization, "unemployed");
         booleans(civilization, "capacitiesInitialized");
+        number(civilization.get("professorImpact"));
         var smelter = fields(civilization.get("smelter"), "wood", "iron");
         integers(smelter, "wood", "iron");
         var garrison = fields(civilization.get("garrison"), "soldiers", "trainingProgress", "trainingRate");

@@ -498,6 +498,62 @@ public final class EvolveDesktop {
                 Math.abs(panel.engine().exportSave().resources().get("Furs").changePerSecond() - 0.2) > 1e-9)
             throw new IllegalStateException("Garrison hunting failed");
         render(panel, Path.of("build/preview-garrison.png"), 1660);
+        librarySmokeTest(panel);
+    }
+
+    private static void librarySmokeTest(EvolvePanel panel) throws Exception {
+        waitFor(panel, "Stone", 3000);
+        panel.jobButton("cement_worker", true).doClick();
+        buyWithStorage(panel, "tech-library");
+        buyWithStorage(panel, "city-library");
+        waitFor(panel, "Knowledge", 1125);
+        alignMidLoop(panel);
+        panel.actionButton("tech-thesis").doClick();
+        if (panel.engine().exportSave().civilization().professorImpact() != 0.5)
+            throw new IllegalStateException("Thesis applied before midLoop");
+        if (!panel.saveGame()) throw new IllegalStateException("Pending thesis save failed");
+        panel.engine().advanceTicks(20);
+        panel.loadGame();
+        if (panel.engine().exportSave().civilization().professorImpact() != 0.5)
+            throw new IllegalStateException("Loading applied pending thesis");
+        panel.engine().advanceTicks(25);
+        if (Math.abs(panel.engine().exportSave().resources().get("Knowledge").changePerSecond() - 1.51 * 1.05) > 1e-9)
+            throw new IllegalStateException("Library knowledge production failed");
+        var library = panel.engine().snapshot().actions().stream().filter(a -> a.id().equals("city-library")).findFirst().orElseThrow();
+        library.costs().forEach((id, amount) -> {
+            if (java.util.List.of("Plywood", "Brick").contains(id)) {
+                while (panel.engine().exportSave().resources().get(id).amount() < amount) buyWithStorage(panel, "craft-" + id);
+            } else waitFor(panel, id, amount);
+        });
+        waitFor(panel, "Knowledge", 3240);
+        alignMidLoop(panel);
+        double capacity = panel.engine().exportSave().resources().get("Knowledge").capacity();
+        panel.actionButton("tech-research_grant").doClick();
+        panel.actionButton("city-library").doClick();
+        if (panel.engine().exportSave().resources().get("Knowledge").capacity() != capacity + 125 ||
+                panel.engine().exportSave().civilization().professorImpact() != 0.52)
+            throw new IllegalStateException("Library did not retain pending university storage");
+        if (!panel.saveGame()) throw new IllegalStateException("Pending research grant save failed");
+        var saved = panel.engine().exportSave();
+        panel.engine().advanceTicks(20);
+        panel.loadGame();
+        if (!saved.equals(panel.engine().exportSave())) throw new IllegalStateException("Loading applied pending university storage");
+        panel.jobButton("professor", true).doClick();
+        panel.jobButton("professor", false).doClick();
+        if (panel.engine().exportSave().civilization().professorImpact() != 0.52)
+            throw new IllegalStateException("Professor controls discarded thesis impact");
+        panel.engine().advanceTicks(25);
+        panel.refresh();
+        int universities = panel.engine().exportSave().structures().get("university");
+        if (Math.abs(panel.engine().exportSave().resources().get("Knowledge").capacity() - (100 + universities * 520d + 250)) > 1e-9)
+            throw new IllegalStateException("Research grant capacity failed");
+        render(panel, Path.of("build/preview-library.png"), 1660);
+    }
+
+    private static void alignMidLoop(EvolvePanel panel) {
+        while (panel.engine().exportSave().tickRemainder() != 0 || panel.engine().exportSave().loopCycle() % 4 != 0)
+            panel.engine().advanceTicks(1);
+        panel.refresh();
     }
 
     private static void buyWithStorage(EvolvePanel panel, String id) {
@@ -523,7 +579,8 @@ public final class EvolveDesktop {
         action.costs().forEach((resource, amount) -> {
             for (int attempts = 0; panel.engine().exportSave().resources().get(resource).amount() < amount; attempts++) {
                 if (attempts >= 600) throw new IllegalStateException("GUI production stalled for " + resource);
-                panel.engine().advanceTicks(200);
+                if (java.util.List.of("Plywood", "Brick", "Wrought_Iron").contains(resource)) buyWithStorage(panel, "craft-" + resource);
+                else panel.engine().advanceTicks(200);
             }
         });
         panel.refresh();

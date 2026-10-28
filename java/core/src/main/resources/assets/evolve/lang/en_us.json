@@ -277,6 +277,8 @@
   "evolve.city_max_knowledge": "+%1$s Max Knowledge",
   "evolve.city_university": "University",
   "evolve.city_university_effect": "+%1$s Max Professor",
+  "evolve.city_library": "Library",
+  "evolve.city_library_effect": "+%1$s%% Knowledge Production",
   "evolve.tech_club": "Club",
   "evolve.tech_club_desc": "Make a basic club",
   "evolve.tech_bone_tools": "Bone Tools",
@@ -315,6 +317,12 @@
   "evolve.tech_investing_desc": "Invent Investing",
   "evolve.tech_science": "Scientific Method",
   "evolve.tech_science_desc": "Begin a journey of testing and discovery",
+  "evolve.tech_library": "Dewey Decimal System",
+  "evolve.tech_library_desc": "Organize and store all the knowledge of your race",
+  "evolve.tech_thesis": "Thesis Papers",
+  "evolve.tech_thesis_desc": "Professors will require their students to write thesis papers",
+  "evolve.tech_research_grant": "Research Grant",
+  "evolve.tech_research_grant_desc": "Research Grant",
   "evolve.tech_stone_axe": "Primitive Axes",
   "evolve.tech_stone_axe_desc": "Create the first axe",
   "evolve.tech_copper_axes": "Bronze Axe",
@@ -1177,5 +1185,6 @@
   "evolve.ui_shed_furs": "Increases fur storage capacity by %1$s.",
   "evolve.ui_garrison_workers": "Soldiers: %1$s / %2$s",
   "evolve.ui_garrison_progress": "Training: %1$s%% (+%2$s%%/s)",
-  "evolve.ui_garrison_full": "Barracks full"
+  "evolve.ui_garrison_full": "Barracks full",
+  "evolve.ui_thesis_professor": "Libraries increase each professor's base knowledge output by 0.01."
 }

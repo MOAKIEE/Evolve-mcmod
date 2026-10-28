@@ -602,6 +602,68 @@ class JsonPersistenceTest {
         }
     }
 
+    @Test
+    void libraryRoundTripPreservesPendingProfessorImpactAndUniversityCapacity() {
+        var base = scienceSave();
+        var resources = new LinkedHashMap<>(base.resources());
+        resources.put("Knowledge", new GameSave.ResourceState(0, 3850, true, 0));
+        resources.put("Copper", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Cement", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Furs", new GameSave.ResourceState(0, 100, true, 0));
+        resources.put("Plywood", new GameSave.ResourceState(0, -1, true, 0));
+        resources.put("Brick", new GameSave.ResourceState(0, -1, true, 0));
+        var structures = new LinkedHashMap<>(base.structures());
+        structures.put("university", 7);
+        structures.put("rock_quarry", 0);
+        structures.put("mine", 1);
+        structures.put("cement_plant", 1);
+        structures.put("foundry", 1);
+        structures.put("garrison", 1);
+        structures.put("library", 2);
+        var tech = new LinkedHashMap<>(base.technologies());
+        tech.put("science", 4);
+        tech.put("mining", 2);
+        tech.put("cement", 1);
+        tech.put("foundry", 1);
+        tech.put("military", 1);
+        var save = new GameSave(base.schemaVersion(), base.ruleset(), 0, 0, 0, 0, false, base.phase(), base.randomSeed(),
+                base.species(), base.genus(), base.progress(), base.context(), resources, structures, tech, base.traits(), base.civilization());
+        var original = EvolutionEngine.restore(save);
+        var restored = EvolutionEngine.restore(codec.decode(codec.encode(save)));
+        assertEquals(0.5, restored.exportSave().civilization().professorImpact());
+        assertEquals(3850, restored.exportSave().resources().get("Knowledge").capacity());
+        original.advanceTicks(5);
+        restored.advanceTicks(5);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(1.5 * 1.1, restored.exportSave().resources().get("Knowledge").changePerSecond(), 1e-12);
+        restored = EvolutionEngine.restore(codec.decode(codec.encode(restored.exportSave())));
+        original.advanceTicks(23);
+        restored.advanceTicks(23);
+        assertEquals(original.exportSave(), restored.exportSave());
+        assertEquals(0.52, restored.exportSave().civilization().professorImpact());
+        assertEquals(3990, restored.exportSave().resources().get("Knowledge").capacity());
+        assertEquals(1.52 * 1.1, restored.exportSave().resources().get("Knowledge").changePerSecond(), 1e-12);
+        for (var change : java.util.List.<Consumer<JsonObject>>of(
+                root -> root.addProperty("schemaVersion", 12),
+                root -> root.addProperty("ruleset", "evolve-1.4.10/garrison-1"),
+                root -> root.getAsJsonObject("civilization").remove("professorImpact"),
+                root -> root.getAsJsonObject("civilization").addProperty("professorImpact", 0.51),
+                root -> root.getAsJsonObject("civilization").addProperty("professorImpact", 0.53),
+                root -> root.getAsJsonObject("civilization").addProperty("professorImpact", 0.521),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Knowledge").addProperty("capacity", 3991),
+                root -> root.getAsJsonObject("resources").getAsJsonObject("Knowledge").addProperty("capacity", 4000),
+                root -> root.getAsJsonObject("structures").remove("library"),
+                root -> root.getAsJsonObject("structures").addProperty("foundry", 0),
+                root -> root.getAsJsonObject("structures").addProperty("garrison", 0),
+                root -> root.getAsJsonObject("technologies").remove("cement"),
+                root -> root.getAsJsonObject("technologies").addProperty("science", 1)
+        )) {
+            var root = JsonParser.parseString(codec.encode(save)).getAsJsonObject();
+            change.accept(root);
+            assertThrows(SaveFormatException.class, () -> codec.decode(root.toString()));
+        }
+    }
+
     private void invalid(Consumer<JsonObject> change) {
         var root = JsonParser.parseString(codec.encode(EvolutionEngine.newGame(2).exportSave())).getAsJsonObject();
         change.accept(root);
